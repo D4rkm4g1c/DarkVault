@@ -915,12 +915,12 @@ router.get('/file', (req, res) => {
     return res.status(400).json({ error: 'Filename is required' });
   }
   
-  // Basic path traversal protection
+  // Basic path traversal protection - modified to match our local environment
   const blockedPatterns = [
-    '../', '..\\', '/..',
-    'etc/passwd', 'etc/shadow',
-    '/root', '/home',
-    'flag.txt', '/etc/darkflag'
+    '../', '..\\', '/..',  // Block obvious traversal attempts
+    // Remove system specific paths that don't apply to our local setup
+    'flag.txt',            // Block direct access to flag.txt
+    'config.secret'        // Block direct access to config.secret
   ];
   
   // Check for basic path traversal attempts
@@ -1033,7 +1033,8 @@ router.post('/ping', (req, res) => {
   }
   
   // Create a special flag file that can be found through command injection
-  fs.writeFileSync('/tmp/cmd_flag.txt', 'DARK{c0mm4nd_1nj3ct10n_pr0}');
+  // This uses the local tmp directory instead of system /tmp
+  fs.writeFileSync(path.join(__dirname, '../tmp/cmd_flag.txt'), 'DARK{c0mm4nd_1nj3ct10n_pr0}');
   
   console.log(`Executing ping command for host: ${host}`);
   
