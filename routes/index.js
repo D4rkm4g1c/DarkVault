@@ -158,7 +158,7 @@ router.get('/dashboard', (req, res) => {
   });
 });
 
-// User profile page - view an individual user
+// User profile page - vulnerable to IDOR
 router.get('/user/:id', (req, res) => {
   // Check if user is logged in
   if (!req.session.user) {
@@ -167,6 +167,9 @@ router.get('/user/:id', (req, res) => {
   }
   
   const userId = req.params.id;
+  
+  // VULNERABLE: No authorization check if user should be allowed to view this profile
+  // This is an intentional IDOR vulnerability for training purposes
   
   // First get the user data
   db.get("SELECT id, username, email, role, isAdmin FROM users WHERE id = ?", [userId], (err, user) => {
@@ -191,7 +194,9 @@ router.get('/user/:id', (req, res) => {
           username: user.username,
           email: user.email,
           isAdmin: user.isAdmin === 1 || user.role === 'admin',
-          preferences: preferences || {}
+          preferences: preferences || {},
+          // Easter egg: Access to "hidden" admin
+          flag: userId === '9999' ? 'DARK{1d0r_vuln3r4b1l1ty}' : null
         };
         
         res.render('profile', { 
@@ -499,6 +504,10 @@ router.get('/users', (req, res) => {
     req.flash('error', 'You must be logged in to view users');
     return res.redirect('/login');
   }
+  
+  // UI-level permission check (still vulnerable to direct URL access)
+  // VULNERABLE: Missing server-side authorization - user can still access by entering URL directly
+  // This creates an intentional IDOR vulnerability for demonstration purposes
   
   db.getAllUsers((err, users) => {
     if (err) {
