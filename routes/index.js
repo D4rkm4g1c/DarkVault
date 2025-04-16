@@ -31,17 +31,22 @@ router.get('/', (req, res) => {
         console.error('Error fetching todos:', err);
         req.flash('error', 'Failed to load todos');
         return res.render('index', { 
+          title: 'DarkVault - Home',
           user: req.session.user,
           todos: []
         });
       }
       res.render('index', { 
+        title: 'DarkVault - Home',
         user: req.session.user,
         todos: todos
       });
     });
   } else {
-    res.render('index', { user: null });
+    res.render('index', { 
+      title: 'DarkVault - Home',
+      user: null 
+    });
   }
 });
 
@@ -51,6 +56,7 @@ router.get('/login', (req, res) => {
     return res.redirect('/');
   }
   res.render('login', { 
+    title: 'DarkVault - Login',
     error: req.flash('error')
   });
 });
@@ -89,6 +95,7 @@ router.get('/register', (req, res) => {
     return res.redirect('/');
   }
   res.render('register', { 
+    title: 'DarkVault - Register',
     error: req.flash('error')
   });
 });
@@ -190,6 +197,7 @@ router.get('/search', (req, res) => {
   }
   
   res.render('search', {
+    title: 'DarkVault - Search',
     user: req.session.user,
     query: q,
     results: results
@@ -208,12 +216,14 @@ router.get('/messages', (req, res) => {
       console.error('Error fetching messages:', err);
       req.flash('error', 'Failed to load messages');
       return res.render('messages', { 
+        title: 'DarkVault - Messages',
         user: req.session.user,
         messages: []
       });
     }
     
     res.render('messages', { 
+      title: 'DarkVault - Messages',
       user: req.session.user,
       messages: messages
     });

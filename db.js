@@ -117,7 +117,73 @@ db.serialize(() => {
       console.log('Sample products created');
     }
   });
+  
+  // Insert sample todos
+  db.get("SELECT COUNT(*) as count FROM todos", (err, row) => {
+    if (!err && row && row.count === 0) {
+      db.run("INSERT INTO todos (user_id, title, completed) VALUES (?, ?, ?)",
+        [1, 'Review security policies', 0]);
+      db.run("INSERT INTO todos (user_id, title, completed) VALUES (?, ?, ?)",
+        [1, 'Update admin password', 0]);
+      db.run("INSERT INTO todos (user_id, title, completed) VALUES (?, ?, ?)",
+        [2, 'Complete profile', 1]);
+      console.log('Sample todos created');
+    }
+  });
 });
 
-// Export the database connection
-module.exports = db; 
+// Database helper functions
+// Find user by credentials (VULNERABLE to SQL injection)
+const findUserByCredentials = (username, password, callback) => {
+  // Deliberately vulnerable to SQL injection
+  const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
+  db.get(query, (err, row) => {
+    if (err) return callback(err);
+    callback(null, row);
+  });
+};
+
+// Find user by username
+const findUserByUsername = (username, callback) => {
+  db.get('SELECT * FROM users WHERE username = ?', [username], callback);
+};
+
+// Create a new user
+const createUser = (username, password, email, callback) => {
+  const query = 'INSERT INTO users (username, password, email) VALUES (?, ?, ?)';
+  db.run(query, [username, password, email], callback);
+};
+
+// Get todos by user ID
+const getTodosByUserId = (userId, callback) => {
+  db.all('SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC', [userId], callback);
+};
+
+// Get all messages
+const getAllMessages = (callback) => {
+  db.all(`
+    SELECT m.*, u.username as author
+    FROM messages m
+    JOIN users u ON m.user_id = u.id
+    ORDER BY m.created_at DESC
+  `, callback);
+};
+
+// Create a new message
+const createMessage = (userId, content, callback) => {
+  const query = 'INSERT INTO messages (user_id, content) VALUES (?, ?)';
+  db.run(query, [userId, content], callback);
+};
+
+// Export the database connection and functions
+module.exports = {
+  findUserByCredentials,
+  findUserByUsername,
+  createUser,
+  getTodosByUserId,
+  getAllMessages,
+  createMessage,
+  get: (query, params, callback) => db.get(query, params, callback),
+  all: (query, params, callback) => db.all(query, params, callback),
+  run: (query, params, callback) => db.run(query, params, callback)
+}; 
