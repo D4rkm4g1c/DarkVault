@@ -24,8 +24,8 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(xmlParser());
 app.use(cookieParser());
 
@@ -34,10 +34,7 @@ app.use(session({
   secret: 'darkvault-secret-key',
   resave: false,
   saveUninitialized: true,
-  cookie: { 
-    secure: false, // VULNERABLE: Not using HTTPS
-    httpOnly: false, // VULNERABLE: Not using httpOnly flag
-  }
+  cookie: { secure: process.env.NODE_ENV === 'production' }
 }));
 
 // Flash messages
@@ -59,8 +56,9 @@ if (!fs.existsSync(uploadsDir)){
 
 // Global variables middleware
 app.use((req, res, next) => {
-  res.locals.success_msg = req.flash('success');
-  res.locals.error_msg = req.flash('error');
+  // Make flash messages consistently available to templates
+  res.locals.success_msg = req.flash('success') || req.flash('success_msg') || [];
+  res.locals.error_msg = req.flash('error') || req.flash('error_msg') || [];
   res.locals.user = req.session.user || null;
   next();
 });

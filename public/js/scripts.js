@@ -4,6 +4,9 @@
 document.addEventListener('DOMContentLoaded', function() {
   console.log('DarkVault application initialized');
   
+  // Initialize Bootstrap components
+  initBootstrapComponents();
+  
   // Setup message deletion confirmation
   setupMessageDeleteConfirmation();
   
@@ -19,6 +22,50 @@ document.addEventListener('DOMContentLoaded', function() {
   // Setup password visibility toggle
   setupPasswordToggle();
 });
+
+// Initialize Bootstrap components
+function initBootstrapComponents() {
+  // Fix for dropdown issues in navbar
+  const dropdownElementList = document.querySelectorAll('.dropdown-toggle');
+  if (dropdownElementList.length > 0) {
+    try {
+      const dropdownList = [...dropdownElementList].map(dropdownToggleEl => {
+        return new bootstrap.Dropdown(dropdownToggleEl);
+      });
+    } catch (error) {
+      console.error('Error initializing dropdowns:', error);
+    }
+  }
+  
+  // Ensure the navbar toggler works on mobile
+  const navbarToggler = document.querySelector('.navbar-toggler');
+  if (navbarToggler) {
+    navbarToggler.addEventListener('click', function() {
+      const target = document.querySelector(this.getAttribute('data-bs-target'));
+      if (target) {
+        target.classList.toggle('show');
+      } else {
+        // Fallback for cases where data-bs-target might be missing
+        const navbarNav = document.getElementById('navbarNav');
+        if (navbarNav) {
+          navbarNav.classList.toggle('show');
+        }
+      }
+    });
+  }
+  
+  // Fix for any broken links by attaching click handlers
+  const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+  navLinks.forEach(link => {
+    if (link.getAttribute('href') === '#' || !link.getAttribute('href')) {
+      link.addEventListener('click', function(e) {
+        // Prevent default only if the href is # or empty
+        e.preventDefault();
+        console.log('Clicked on nav link with missing or # href');
+      });
+    }
+  });
+}
 
 // Message deletion confirmation
 function setupMessageDeleteConfirmation() {

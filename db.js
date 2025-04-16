@@ -87,6 +87,16 @@ db.serialize(() => {
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
 
+  // Product filters table
+  db.run(`CREATE TABLE IF NOT EXISTS product_filters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    filter_name TEXT,
+    filter_query TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  )`);
+
   // Insert default admin user if it doesn't exist
   db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
     if (!row) {

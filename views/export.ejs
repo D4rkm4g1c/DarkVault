@@ -122,14 +122,40 @@
     
     <script>
         function copyData() {
+            const exportData = document.querySelector('.export-data').textContent;
+            
+            // Use modern Clipboard API instead of deprecated execCommand
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(exportData)
+                    .then(() => {
+                        alert('Data copied to clipboard!');
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy: ', err);
+                        fallbackCopyMethod();
+                    });
+            } else {
+                fallbackCopyMethod();
+            }
+        }
+        
+        // Fallback method for older browsers
+        function fallbackCopyMethod() {
             const exportData = document.querySelector('.export-data');
             const range = document.createRange();
             range.selectNode(exportData);
             window.getSelection().removeAllRanges();
             window.getSelection().addRange(range);
-            document.execCommand('copy');
+            
+            try {
+                document.execCommand('copy');
+                alert('Data copied to clipboard!');
+            } catch (err) {
+                console.error('Fallback: Couldn\'t copy the text: ', err);
+                alert('Could not copy text. Please select and copy manually.');
+            }
+            
             window.getSelection().removeAllRanges();
-            alert('Data copied to clipboard!');
         }
     </script>
 </body>

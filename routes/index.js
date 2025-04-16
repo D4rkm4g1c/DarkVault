@@ -160,19 +160,25 @@ router.get('/dashboard', (req, res) => {
 
 // User profile page - vulnerable to IDOR
 router.get('/user/:id', (req, res) => {
+  // Check if user is logged in
+  if (!req.session.user) {
+    req.flash('error', 'You must be logged in to view user profiles');
+    return res.redirect('/login');
+  }
+  
   const userId = req.params.id;
   
   // No authorization check for viewing profiles (IDOR vulnerability)
-  db.get('SELECT id, username, email, profile_pic, bio FROM users WHERE id = ?', [userId], (err, user) => {
+  db.get('SELECT id, username, email, profile_pic, bio, role, isAdmin FROM users WHERE id = ?', [userId], (err, user) => {
     if (err || !user) {
       req.flash('error', 'User not found');
-      return res.redirect('/');
+      return res.redirect('/users');
     }
     
     // Get user's messages
     db.all('SELECT * FROM messages WHERE user_id = ? ORDER BY created_at DESC', [userId], (err, messages) => {
       res.render('profile', {
-        title: `${user.username}'s Profile`,
+        title: `${user.username}'s Profile - DarkVault`,
         profileUser: user,
         messages: messages || [],
         user: req.session.user
@@ -304,6 +310,21 @@ router.get('/admin', (req, res) => {
       users: users
     });
   });
+});
+
+// Admin settings route
+router.post('/admin/settings', (req, res) => {
+  if (!req.session.user || (!req.session.user.isAdmin && req.session.user.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  
+  const { debug_mode, error_logging } = req.body;
+  
+  // In a real app, we would save these settings to a database
+  console.log('Admin settings updated:', { debug_mode, error_logging });
+  
+  req.flash('success_msg', 'Settings updated successfully');
+  res.redirect('/admin');
 });
 
 // Users list page
@@ -492,22 +513,31 @@ router.get('/todos/:id', (req, res) => {
 // VULNERABLE: Command Injection in ping route
 router.get('/ping', (req, res) => {
   if (!req.session.user) {
-    return res.status(401).json({ error: 'Authentication required' });
+    req.flash('error', 'You must be logged in to use network tools');
+    return res.redirect('/login');
   }
   
   const { host } = req.query;
   
+  // Render the page without running a command if no host is provided
   if (!host) {
-    return res.status(400).json({ error: 'Host parameter is required' });
+    return res.render('ping', {
+      title: 'Network Ping - DarkVault',
+      user: req.session.user,
+      host: '',
+      output: '',
+      error: null
+    });
   }
   
   // VULNERABLE: Command injection through unsanitized input
+  // Note: This is deliberately vulnerable as part of the security training app
   exec(`ping -c 4 ${host}`, (error, stdout, stderr) => {
     res.render('ping', {
       title: 'Network Ping - DarkVault',
       user: req.session.user,
       host: host,
-      output: stdout || stderr,
+      output: stdout || stderr || 'No output received',
       error: error ? error.message : null
     });
   });
@@ -522,6 +552,114 @@ router.get('/client-render', (req, res) => {
     template: req.query.template || '',
     renderMode: req.query.renderMode || 'safe'
   });
+});
+
+// Settings page
+router.get('/settings', (req, res) => {
+  if (!req.session.user) {
+    req.flash('error', 'You must be logged in to view settings');
+    return res.redirect('/login');
+  }
+  
+  // Get user preferences
+  db.get("SELECT * FROM user_preferences WHERE user_id = ?", [req.session.user.id], (err, preferences) => {
+    // Get saved filters (if any)
+    db.all("SELECT * FROM product_filters WHERE user_id = ?", [req.session.user.id], (err, filters) => {
+      res.render('settings', {
+        title: 'User Settings - DarkVault',
+        user: req.session.user,
+        preferences: preferences || {},
+        filters: filters || [],
+        message: req.flash('success_msg')
+      });
+    });
+  });
+});
+
+// Save settings
+router.post('/settings/save', (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  const { display_name, avatar, bio, theme, favorite_category } = req.body;
+  
+  // Check if user already has preferences
+  db.get("SELECT * FROM user_preferences WHERE user_id = ?", [req.session.user.id], (err, preferences) => {
+    if (err) {
+      console.error('Error checking preferences:', err);
+      req.flash('error_msg', 'Database error');
+      return res.redirect('/settings');
+    }
+    
+    if (preferences) {
+      // Update existing preferences
+      db.run(
+        "UPDATE user_preferences SET display_name = ?, bio = ?, avatar = ?, theme = ?, favorite_category = ? WHERE user_id = ?",
+        [display_name, bio, avatar, theme, favorite_category, req.session.user.id],
+        (err) => {
+          if (err) {
+            console.error('Error updating preferences:', err);
+            req.flash('error_msg', 'Failed to update preferences');
+          } else {
+            req.flash('success_msg', 'Settings updated successfully');
+          }
+          res.redirect('/settings');
+        }
+      );
+    } else {
+      // Insert new preferences
+      db.run(
+        "INSERT INTO user_preferences (user_id, display_name, bio, avatar, theme, favorite_category) VALUES (?, ?, ?, ?, ?, ?)",
+        [req.session.user.id, display_name, bio, avatar, theme, favorite_category],
+        (err) => {
+          if (err) {
+            console.error('Error creating preferences:', err);
+            req.flash('error_msg', 'Failed to save preferences');
+          } else {
+            req.flash('success_msg', 'Settings saved successfully');
+          }
+          res.redirect('/settings');
+        }
+      );
+    }
+  });
+});
+
+// Save product filter
+router.post('/settings/filter', (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  const { filter_name, category, min_price, max_price } = req.body;
+  
+  if (!filter_name) {
+    req.flash('error_msg', 'Filter name is required');
+    return res.redirect('/settings');
+  }
+  
+  // Create filter query object
+  const filterQuery = {
+    category: category || null,
+    min_price: min_price || null,
+    max_price: max_price || null
+  };
+  
+  // Insert filter
+  db.run(
+    "INSERT INTO product_filters (user_id, filter_name, filter_query) VALUES (?, ?, ?)",
+    [req.session.user.id, filter_name, JSON.stringify(filterQuery)],
+    (err) => {
+      if (err) {
+        console.error('Error saving filter:', err);
+        req.flash('error_msg', 'Failed to save filter');
+      } else {
+        req.flash('success_msg', 'Filter saved successfully');
+      }
+      res.redirect('/settings');
+    }
+  );
 });
 
 // Add template injection example with popular frameworks
