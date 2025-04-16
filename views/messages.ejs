@@ -8,9 +8,8 @@
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-    <%- include('partials/navbar') %>
-
     <%- include('partials/header') %>
+    <%- include('partials/navbar') %>
 
     <div class="container mt-5">
         <h2>Message Board</h2>
@@ -29,7 +28,16 @@
                     <div class="mb-3">
                         <label for="content" class="form-label">Content</label>
                         <textarea class="form-control" id="content" name="content" rows="3" required></textarea>
-                        <div class="form-text text-muted">Try injecting script tags for XSS: &lt;script&gt;alert('XSS')&lt;/script&gt;</div>
+                        <div class="form-text text-muted">
+                            <strong>Note:</strong> Basic XSS payloads like <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code> are blocked.
+                            <br>Try advanced techniques like:
+                            <ul class="mt-1">
+                                <li>DOM-based XSS</li>
+                                <li>Encoded payloads (HTML entities, Unicode, URL encoding)</li>
+                                <li>Event handler attributes in unusual tags</li>
+                                <li>CSS-based injections</li>
+                            </ul>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label for="author" class="form-label">Author</label>

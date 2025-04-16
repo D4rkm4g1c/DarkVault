@@ -121,9 +121,20 @@ db.serialize(() => {
 
 // Helper database functions
 
-// Find user by credentials - vulnerable to SQL injection
+// Find user by credentials - vulnerable to SQL injection but with basic protection
 db.findUserByCredentials = function(username, password, callback) {
-  // VULNERABLE: Direct string interpolation leading to SQL injection
+  // Basic protection against simple SQL injection
+  if (username.toLowerCase().includes(' or ') || 
+      username.includes('--') || 
+      username.includes('1=1') || 
+      password.toLowerCase().includes(' or ') || 
+      password.includes('--') || 
+      password.includes('1=1')) {
+    console.log('Basic SQL injection attempt blocked:', username, password);
+    return callback(null, null); // Return no user found
+  }
+  
+  // Still vulnerable to more sophisticated SQL injection
   const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
   this.get(query, callback);
 };

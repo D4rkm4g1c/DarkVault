@@ -9,9 +9,8 @@
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-    <%- include('partials/navbar') %>
-
     <%- include('partials/header') %>
+    <%- include('partials/navbar') %>
 
     <div class="container mt-5">
         <div class="row justify-content-center">
@@ -57,11 +56,18 @@
 
                 <div class="card mt-4">
                     <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">Help: SQL Injection Vulnerability</h5>
+                        <h5 class="mb-0">Help: Advanced SQL Injection Vulnerability</h5>
                     </div>
                     <div class="card-body">
-                        <p>This login form is vulnerable to SQL injection. Try to bypass authentication by injecting malicious SQL code.</p>
-                        <p>Hint: <code>' OR '1'='1</code> might be a good starting point.</p>
+                        <p>This login form is vulnerable to SQL injection, but basic attempts like <code>' OR '1'='1</code> are blocked.</p>
+                        <p>Try more sophisticated techniques like:</p>
+                        <ul>
+                            <li>Union-based injections</li>
+                            <li>Timing attacks</li>
+                            <li>Alternative logical operators</li>
+                            <li>Character encoding tricks</li>
+                        </ul>
+                        <p>Hint: Try using <code>' OR (SELECT 1)='1</code> or hex encoding.</p>
                     </div>
                 </div>
             </div>

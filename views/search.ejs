@@ -3,49 +3,50 @@
 <div class="container mt-4">
   <h2>Search</h2>
   
-  <!-- Search Form -->
   <div class="card mb-4">
     <div class="card-header bg-primary text-white">
       <h4>Search DarkVault</h4>
     </div>
     <div class="card-body">
-      <form action="/search" method="GET" id="search-form">
+      <form action="/search" method="GET" id="search-page-form">
         <div class="input-group mb-3">
-          <input type="text" class="form-control" name="q" id="search-input" placeholder="Enter your search query..." value="<%= typeof query !== 'undefined' ? query : '' %>">
+          <input type="text" class="form-control" placeholder="Enter search query..." name="q" id="search-page-input" value="<%= typeof query !== 'undefined' ? query : '' %>">
           <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Search</button>
         </div>
-        <small class="text-muted">This search is vulnerable to XSS. Try injecting HTML or JavaScript!</small>
+        <small class="text-muted">Try searching for something with HTML or JavaScript tags...</small>
       </form>
     </div>
   </div>
   
   <% if (typeof query !== 'undefined' && query) { %>
-  <div class="card mb-4">
-    <div class="card-header">
-      <h4>Results for: <%= query %></h4>
+    <div class="card mb-4">
+      <div class="card-header">
+        <h4>Results for: <%- query %></h4>
+      </div>
+      <div class="card-body">
+        <% if (results && results.length > 0) { %>
+          <ul class="list-group">
+            <% results.forEach(result => { %>
+              <li class="list-group-item">
+                <h5><%- result.title || result.name || 'Untitled' %></h5>
+                <p><%= result.content || result.description || 'No description available' %></p>
+                <% if (result.url) { %>
+                  <a href="<%= result.url %>" class="btn btn-sm btn-primary">View</a>
+                <% } %>
+              </li>
+            <% }); %>
+          </ul>
+        <% } else { %>
+          <div class="alert alert-info">No results found for "<%- query %>"</div>
+        <% } %>
+      </div>
     </div>
-    <div class="card-body">
-      <% if (results && results.length > 0) { %>
-        <ul class="list-group">
-          <% results.forEach(result => { %>
-            <li class="list-group-item">
-              <h5><%- result.title || result.name || 'Untitled' %></h5>
-              <p><%= result.content || result.description || 'No description available' %></p>
-              <% if (result.url) { %>
-                <a href="<%= result.url %>" class="btn btn-sm btn-primary">View</a>
-              <% } %>
-            </li>
-          <% }); %>
-        </ul>
-      <% } else { %>
-        <div class="alert alert-info">No results found for "<%= query %>"</div>
-      <% } %>
-    </div>
-  </div>
   <% } %>
   
   <div class="alert alert-warning">
-    <strong>Security Vulnerability:</strong> This search feature is intentionally vulnerable to Cross-Site Scripting (XSS) attacks. The user input is not sanitized before being displayed in the results.
+    <h5><i class="bi bi-exclamation-triangle"></i> Vulnerability Alert</h5>
+    <p>This search function is vulnerable to Cross-Site Scripting (XSS) attacks because it doesn't sanitize user input.</p>
+    <p>Try searching for: <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code></p>
   </div>
   
   <div class="mb-3">

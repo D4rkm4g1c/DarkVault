@@ -423,26 +423,62 @@ router.put('/settings', checkJwt, (req, res) => {
   });
 });
 
-// File upload vulnerability
+// File upload vulnerability - enhanced for attack chaining
 router.post('/upload', checkJwt, (req, res) => {
-  const { filename, fileContent, fileType } = req.body;
+  const { filename, fileContent, fileType, cmdRef } = req.body;
   
   if (!filename || !fileContent) {
     return res.status(400).json({ error: 'Filename and content are required' });
   }
   
-  // No validation of file extension or content type
-  // Vulnerable to path traversal attacks and uploading malicious files
-  const filePath = path.join(__dirname, '..', 'uploads', filename);
+  // Basic file upload protection
+  const blockedExtensions = ['.php', '.jsp', '.asp', '.cgi', '.exe', '.sh', '.pl'];
+  const hasBlockedExtension = blockedExtensions.some(ext => 
+    filename.toLowerCase().endsWith(ext)
+  );
+  
+  if (hasBlockedExtension) {
+    return res.status(403).json({ 
+      error: 'Dangerous file type detected',
+      message: 'Basic upload bypasses are blocked. Try more advanced techniques.'
+    });
+  }
   
   // Ensure uploads directory exists
   if (!fs.existsSync(path.join(__dirname, '..', 'uploads'))) {
     fs.mkdirSync(path.join(__dirname, '..', 'uploads'));
   }
   
-  // Check if this is an attempt to upload a malicious file
-  const dangerousExtensions = ['.php', '.jsp', '.asp', '.cgi', '.exe', '.sh', '.pl'];
-  const hasExploitableExtension = dangerousExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+  // Check for command injection to file upload attack chain
+  if (cmdRef && cmdRef.includes('cmd_injection_ref')) {
+    console.log('COMMAND INJECTION TO FILE UPLOAD CHAIN DETECTED');
+    
+    return res.json({
+      success: true,
+      message: "File uploaded with command injection privileges",
+      flag: "DARK{ch41n3d_cmd_1nj3ct_f1l3_upl04d}",
+      note: "Congratulations! You successfully chained command injection and file upload vulnerabilities."
+    });
+  }
+  
+  // Check for advanced file upload bypass techniques
+  const filenameLower = filename.toLowerCase();
+  const advancedBypassDetected = 
+    // Double extension
+    (filenameLower.includes('.jpg.php') || filenameLower.includes('.png.php')) ||
+    // Null byte injection
+    filenameLower.includes('%00') ||
+    // Case sensitivity bypass
+    (filenameLower.includes('.pHp') || filenameLower.includes('.phpJpg')) ||
+    // Unusual extensions that might be processed by the server
+    (filenameLower.endsWith('.phtml') || filenameLower.endsWith('.php5') || 
+    filenameLower.endsWith('.shtml') || filenameLower.endsWith('.phar')) ||
+    // Special character bypass
+    (filenameLower.includes('.php.') || filenameLower.includes('.php_')) ||
+    // MIME type confusion
+    (fileType && fileType.includes('image/') && fileContent.includes('<?php'));
+  
+  const filePath = path.join(__dirname, '..', 'uploads', filename);
   
   fs.writeFile(filePath, fileContent, (err) => {
     if (err) {
@@ -454,10 +490,10 @@ router.post('/upload', checkJwt, (req, res) => {
       filePath
     };
     
-    // If they uploaded a potentially malicious file, give them the flag
-    if (hasExploitableExtension) {
-      response.flag = "DARK{f1l3_upl04d_byp4ss3d}";
-      response.note = "You've successfully uploaded a potentially executable file!";
+    // If they used an advanced bypass technique
+    if (advancedBypassDetected) {
+      response.flag = "DARK{adv4nc3d_f1l3_upl04d_byp4ss}";
+      response.note = "You've successfully bypassed basic file upload protections!";
     }
     
     db.run("INSERT INTO files (filename, path, uploaded_by) VALUES (?, ?, ?)",
@@ -794,16 +830,52 @@ router.post('/messages', (req, res) => {
     return res.status(400).json({ error: 'Title and content are required' });
   }
   
-  // VULNERABLE: No sanitization of user input for XSS
+  // Basic XSS filtering - blocks obvious attempts
+  const lowerContent = content.toLowerCase();
+  const blockedPatterns = [
+    '<script>', '</script>',
+    'javascript:', 
+    'onerror=', 'onload=', 'onclick=',
+    'alert(', 'prompt(', 'confirm(',
+    'document.cookie'
+  ];
+  
+  // Check for basic XSS patterns
+  const hasBlockedPattern = blockedPatterns.some(pattern => 
+    lowerContent.includes(pattern.toLowerCase())
+  );
+  
+  if (hasBlockedPattern) {
+    return res.status(403).json({ 
+      error: 'Potential XSS attack detected and blocked.',
+      message: 'Basic XSS attempts are blocked. Try more advanced techniques.'
+    });
+  }
+  
+  // Still vulnerable to more sophisticated XSS
   // Store the message (simulated)
   const messageId = Date.now();
   
-  // Check if this is an XSS attempt
-  if (content.includes('<script>') || content.includes('onerror=') || content.includes('javascript:')) {
-    console.log('XSS ATTEMPT DETECTED:', content);
+  // Check for advanced XSS attempts (for flag purposes)
+  // These are patterns that would bypass our basic filter
+  const advancedXssPatterns = [
+    'eval(', 'settimeout(', 'setinterval(',
+    '<img src=x', '<svg', '<iframe',
+    'expression(', 'url(', 
+    'background:', 'data:',
+    'on\\w+=', // Regex-like check for event handlers with encoding
+    '&#', '\\u', '%3c', '%3e' // Encoded characters
+  ];
+  
+  const hasAdvancedPattern = advancedXssPatterns.some(pattern => {
+    const regex = new RegExp(pattern, 'i');
+    return regex.test(content);
+  });
+  
+  if (hasAdvancedPattern) {
+    console.log('ADVANCED XSS ATTEMPT DETECTED:', content);
     
-    // In a real app, this would actually be vulnerable
-    // Here we'll simulate the flag being captured when XSS is attempted
+    // Award flag for successful advanced XSS
     return res.json({
       id: messageId,
       title,
@@ -811,7 +883,7 @@ router.post('/messages', (req, res) => {
       author: author || 'Anonymous',
       timestamp: new Date().toISOString(),
       message: "Message posted successfully",
-      flag: "DARK{xss_3xpl01t3r}"
+      flag: "DARK{adv4nc3d_xss_3xpl01t3r}"
     });
   }
   
@@ -833,17 +905,46 @@ router.get('/file', (req, res) => {
     return res.status(400).json({ error: 'Filename is required' });
   }
   
-  // VULNERABLE: This is vulnerable to path traversal attacks
-  // Should validate/sanitize the filename to prevent accessing files outside intended directory
+  // Basic path traversal protection
+  const blockedPatterns = [
+    '../', '..\\', '/..',
+    'etc/passwd', 'etc/shadow',
+    '/root', '/home',
+    'flag.txt', '/etc/darkflag'
+  ];
+  
+  // Check for basic path traversal attempts
+  const hasBlockedPattern = blockedPatterns.some(pattern => 
+    filename.toLowerCase().includes(pattern.toLowerCase())
+  );
+  
+  if (hasBlockedPattern) {
+    return res.status(403).json({ 
+      error: 'Path traversal attempt detected.',
+      message: 'Basic path traversal attempts are blocked. Try more advanced techniques.'
+    });
+  }
+  
+  // Still vulnerable to more sophisticated path traversal
   try {
     const filePath = path.join(__dirname, '../assets/', filename);
     
-    // Check if filePath contains the special flag file identifier
-    if (filePath.includes('flag.txt') || filePath.includes('/etc/darkflag')) {
-      // Return the flag for path traversal
+    // Check for advanced path traversal (encoding bypasses)
+    if (filename.includes('%2e') || 
+        filename.includes('%2f') || 
+        filename.includes('\\u') || 
+        filename.includes('..%2f') || 
+        filename.includes('.././') || 
+        filename.includes('....//') || 
+        filename.includes('0x')) {
+      
+      console.log('ADVANCED PATH TRAVERSAL DETECTED:', filename);
+      
+      // Return the flag for advanced path traversal with a hint for the attack chain
       return res.json({
-        content: "Congratulations! You've found a flag through path traversal: DARK{p4th_tr4v3rs4l_m4st3r}",
-        filename: filename
+        content: "Congratulations! You've bypassed basic path traversal protections: DARK{adv4nc3d_p4th_tr4v3rs4l_m4st3r}",
+        filename: filename,
+        hint: "Try to find a file called 'config.secret' that contains JWT secrets for the admin dashboard."
       });
     }
     
@@ -901,15 +1002,32 @@ router.post('/ping', (req, res) => {
     return res.status(400).json({ error: 'Host is required' });
   }
   
-  // VULNERABLE: Command injection through unsanitized user input
-  // User input is directly concatenated to a shell command
+  // Basic command injection protection
+  const blockedPatterns = [
+    ';', '&&', '||', '`', 
+    'cat ', '/bin/sh', '/bin/bash',
+    '| cat', '>/tmp', 
+    'flag.txt', 'passwd'
+  ];
+  
+  // Check for basic command injection attempts
+  const hasBlockedPattern = blockedPatterns.some(pattern => 
+    host.toLowerCase().includes(pattern.toLowerCase())
+  );
+  
+  if (hasBlockedPattern) {
+    return res.status(403).json({ 
+      error: 'Potentially dangerous command detected.',
+      message: 'Basic command injection attempts are blocked. Try more advanced techniques.'
+    });
+  }
   
   // Create a special flag file that can be found through command injection
   fs.writeFileSync('/tmp/cmd_flag.txt', 'DARK{c0mm4nd_1nj3ct10n_pr0}');
   
   console.log(`Executing ping command for host: ${host}`);
   
-  // Vulnerable command execution
+  // Still vulnerable to more sophisticated command injection
   exec(`ping -c 4 ${host}`, (error, stdout, stderr) => {
     if (error) {
       return res.status(500).json({ error: 'Execution error', details: error.message });
@@ -919,12 +1037,24 @@ router.post('/ping', (req, res) => {
       return res.status(500).json({ error: 'stderr', details: stderr });
     }
     
-    // Check if user is trying to read the flag file
-    if (host.includes('cat') && host.includes('cmd_flag.txt')) {
+    // Check for advanced command injection (bypassing filters)
+    if ((host.includes('$') && (host.includes('(') || host.includes('{'))) || 
+        (host.includes('\\') && host.includes('x')) || 
+        host.includes('$(') || 
+        host.includes('${') || 
+        host.includes('%0A') || 
+        host.includes('0x') || 
+        host.includes('\\n')) {
+      
+      console.log('ADVANCED COMMAND INJECTION DETECTED:', host);
+      
+      // Give a reference token to use for the file upload attack chain
       return res.json({
         output: stdout,
-        message: "Command executed successfully. You found the flag!",
-        flag: "DARK{c0mm4nd_1nj3ct10n_pr0}"
+        message: "Command executed successfully. You've bypassed the basic protections!",
+        flag: "DARK{adv4nc3d_c0mm4nd_1nj3ct10n_pr0}",
+        cmdRef: "cmd_injection_ref_" + Date.now(),
+        note: "Use this cmdRef in the /upload endpoint to chain vulnerabilities."
       });
     }
     
@@ -932,7 +1062,7 @@ router.post('/ping', (req, res) => {
   });
 });
 
-// JWT Manipulation Vulnerability
+// JWT Manipulation Vulnerability - enhanced with attack chain
 router.get('/admin/dashboard', (req, res) => {
   // Extract token from Authorization header
   const authHeader = req.headers.authorization;
@@ -943,12 +1073,35 @@ router.get('/admin/dashboard', (req, res) => {
   }
   
   try {
-    // Verify JWT token
+    // Basic JWT protection - check for none algorithm
+    try {
+      const decoded = jwt.decode(token, { complete: true });
+      if (decoded && decoded.header && decoded.header.alg === 'none') {
+        return res.status(401).json({ 
+          error: 'Invalid token algorithm',
+          message: 'Basic JWT attacks are blocked. Try more advanced techniques.'
+        });
+      }
+    } catch (e) {
+      // Continue processing even if decode fails
+    }
+    
+    // Still vulnerable to more sophisticated JWT attacks
     const decoded = jwt.verify(token, 'darkvault-secret-key');
     
-    // Check if user is admin
+    // Check if this token was obtained through the attack chain
+    // This simulates a scenario where the JWT secret was found through path traversal
+    if (decoded.obtainedViaPathTraversal === true) {
+      return res.json({
+        message: "Congratulations! You've completed the attack chain!",
+        user: decoded,
+        flag: "DARK{ch41n3d_vulns_jwt_p4th_tr4v3rs4l}",
+        note: "You successfully chained path traversal and JWT manipulation attacks."
+      });
+    }
+    
+    // Standard admin access
     if (decoded.isAdmin) {
-      // User has admin privileges - provide admin flag
       return res.json({
         message: "Welcome to the admin dashboard!",
         user: decoded,
@@ -960,6 +1113,14 @@ router.get('/admin/dashboard', (req, res) => {
   } catch (err) {
     return res.status(401).json({ error: 'Invalid token', details: err.message });
   }
+});
+
+// Add a hidden endpoint that reveals the JWT secret through path traversal
+router.get('/secret-file', (req, res) => {
+  res.json({
+    content: "JWT_SECRET=darkvault-secret-key\nThis file is meant to be accessed via path traversal.",
+    filename: "config.secret"
+  });
 });
 
 // Race condition vulnerability
@@ -1022,21 +1183,34 @@ router.post('/update-balance', (req, res) => {
   }, 500);
 });
 
-// CSRF Vulnerability demo
+// CSRF Vulnerability demo - enhanced for attack chaining with XSS
 router.post('/update-email', (req, res) => {
-  const { userId, newEmail } = req.body;
+  const { userId, newEmail, xssRef } = req.body;
   
   if (!userId || !newEmail) {
     return res.status(400).json({ error: 'User ID and new email are required' });
   }
   
-  // VULNERABLE: No CSRF token validation
-  // In a real secure app, this would check for a valid CSRF token
+  // Basic CSRF protection - check referer
+  const referer = req.headers.referer;
+  if (referer && !referer.includes('darkvault')) {
+    return res.status(403).json({ 
+      error: 'Invalid referer',
+      message: 'Basic CSRF attempts are blocked. Try more advanced techniques.'
+    });
+  }
   
-  // Simulate updating user email
-  console.log(`Updating email for user ${userId} to ${newEmail}`);
+  // Check for XSS to CSRF attack chain
+  if (xssRef && xssRef.includes('xss_attack_ref')) {
+    return res.json({
+      success: true,
+      message: "Email updated successfully",
+      flag: "DARK{ch41n3d_xss_csrf_4tt4ck}",
+      note: "Congratulations! You successfully chained XSS and CSRF vulnerabilities."
+    });
+  }
   
-  // Check for CSRF testing pattern
+  // Check for regular CSRF testing pattern
   if (newEmail.includes('csrf') || newEmail.includes('attacker')) {
     return res.json({
       success: true,
@@ -1050,6 +1224,20 @@ router.post('/update-email', (req, res) => {
     success: true,
     message: "Email updated successfully",
     note: "This endpoint is vulnerable to CSRF because it doesn't validate any tokens"
+  });
+});
+
+// Helper endpoint to verify XSS payload effectiveness for attack chain
+router.post('/report-xss', (req, res) => {
+  const { payload, stolenCookie } = req.body;
+  
+  console.log('XSS REPORT RECEIVED:', { payload, stolenCookie });
+  
+  res.json({
+    success: true,
+    message: "XSS report received",
+    xssRef: "xss_attack_ref_" + Date.now(),
+    note: "Use this xssRef in the update-email endpoint to complete the attack chain"
   });
 });
 

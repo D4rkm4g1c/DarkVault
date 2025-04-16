@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
     <style>
         .flag-card {
             margin-bottom: 15px;
@@ -41,12 +42,107 @@
     <%- include('partials/navbar') %>
 
     <div class="container mt-5">
-        <h2>Flag Tracking Dashboard</h2>
-        <p class="lead">Track your progress through exploiting DarkVault's vulnerabilities.</p>
+        <h2 class="mb-4">DarkVault CTF Challenges</h2>
+        
+        <div class="alert alert-primary">
+            <h4><i class="bi bi-info-circle"></i> Welcome to Advanced Mode</h4>
+            <p>Basic vulnerability exploits are now blocked. You'll need to use more sophisticated techniques to capture flags.</p>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0">Advanced Vulnerability Challenges</h4>
+            </div>
+            <div class="card-body">
+                <p>Each vulnerability now has basic protections in place. You'll need to use more sophisticated techniques:</p>
+                <ul>
+                    <li><strong>SQL Injection:</strong> Basic patterns like <code>' OR '1'='1--</code> are blocked</li>
+                    <li><strong>XSS:</strong> Simple <code>&lt;script&gt;</code> tags and common event handlers are blocked</li>
+                    <li><strong>Command Injection:</strong> Basic patterns like <code>;</code>, <code>&&</code>, <code>|</code> are blocked</li>
+                    <li><strong>Path Traversal:</strong> Simple <code>../</code> patterns are blocked</li>
+                    <li><strong>File Upload:</strong> Common dangerous extensions are blocked</li>
+                    <li><strong>CSRF:</strong> Basic referer checks are implemented</li>
+                    <li><strong>JWT:</strong> 'none' algorithm attacks are detected</li>
+                </ul>
+            </div>
+        </div>
         
         <div class="card mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h4 class="mb-0">Attack Chains</h4>
+            </div>
             <div class="card-body">
-                <h4>Submit Captured Flag</h4>
+                <p>For an extra challenge, try to chain multiple vulnerabilities together:</p>
+                
+                <div class="mb-3">
+                    <h5><i class="bi bi-link"></i> Path Traversal → JWT Attack</h5>
+                    <p>Use path traversal to find the JWT secret, then forge an admin token with a special field.</p>
+                    <div class="alert alert-secondary">Flag: <code>DARK{ch41n3d_vulns_jwt_p4th_tr4v3rs4l}</code></div>
+                </div>
+                
+                <div class="mb-3">
+                    <h5><i class="bi bi-link"></i> XSS → CSRF Attack</h5>
+                    <p>Use XSS to steal data, report it to <code>/report-xss</code>, then use the reference token in <code>/update-email</code>.</p>
+                    <div class="alert alert-secondary">Flag: <code>DARK{ch41n3d_xss_csrf_4tt4ck}</code></div>
+                </div>
+                
+                <div class="mb-3">
+                    <h5><i class="bi bi-link"></i> Command Injection → File Upload</h5>
+                    <p>Successfully perform command injection to get a reference token, then use it in the file upload endpoint.</p>
+                    <div class="alert alert-secondary">Flag: <code>DARK{ch41n3d_cmd_1nj3ct_f1l3_upl04d}</code></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">Advanced Vulnerability Flags</h4>
+            </div>
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Vulnerability</th>
+                            <th>Flag</th>
+                            <th>Difficulty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Advanced SQL Injection</td>
+                            <td><code>DARK{sql_m4st3r}</code></td>
+                            <td>Hard</td>
+                        </tr>
+                        <tr>
+                            <td>Advanced XSS</td>
+                            <td><code>DARK{adv4nc3d_xss_3xpl01t3r}</code></td>
+                            <td>Hard</td>
+                        </tr>
+                        <tr>
+                            <td>Advanced Command Injection</td>
+                            <td><code>DARK{adv4nc3d_c0mm4nd_1nj3ct10n_pr0}</code></td>
+                            <td>Hard</td>
+                        </tr>
+                        <tr>
+                            <td>Advanced Path Traversal</td>
+                            <td><code>DARK{adv4nc3d_p4th_tr4v3rs4l_m4st3r}</code></td>
+                            <td>Hard</td>
+                        </tr>
+                        <tr>
+                            <td>Advanced File Upload</td>
+                            <td><code>DARK{adv4nc3d_f1l3_upl04d_byp4ss}</code></td>
+                            <td>Hard</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Submit Captured Flag</h4>
+            </div>
+            <div class="card-body">
                 <form id="flagForm">
                     <div class="mb-3">
                         <input type="text" id="flagInput" class="form-control" placeholder="Enter flag (format: DARK{flag_value})">
