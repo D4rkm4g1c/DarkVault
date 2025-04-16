@@ -738,14 +738,15 @@ router.get('/ping', (req, res) => {
   });
 });
 
-// Client-side rendering vulnerabilities demonstration
-router.get('/client-render', (req, res) => {
-  res.render('client-render', {
-    title: 'Client-Side Rendering Vulnerabilities',
-    user: req.session.user || null,
+// Client-side page with DOM-based XSS vulnerability
+router.get('/client-side', (req, res) => {
+  res.render('client-side', {
+    title: 'Client-Side App - DarkVault',
+    user: req.session.user,
+    defaultSearch: req.query.search || '',
+    injectedData: req.query.data || '',
     message: req.query.message || '',
-    template: req.query.template || '',
-    renderMode: req.query.renderMode || 'safe'
+    template: req.query.template || '<div>${name} has role: ${role}</div>'
   });
 });
 
@@ -898,16 +899,6 @@ router.get('/profile', (req, res) => {
   res.redirect(`/user/${req.session.user.id}`);
 });
 
-// Client-side page with DOM-based XSS vulnerability
-router.get('/client-side', (req, res) => {
-  res.render('client-render', {
-    title: 'Client-Side App - DarkVault',
-    user: req.session.user,
-    defaultSearch: req.query.search || '',
-    injectedData: req.query.data || ''
-  });
-});
-
 // Add a forgot-password redirect to fix broken link
 router.get('/forgot-password', (req, res) => {
   res.redirect('/user/forgot-password');
@@ -1017,6 +1008,17 @@ router.get('/directory-listing', (req, res) => {
 // Handle robots.txt requests
 router.get('/robots.txt', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/robots.txt'));
+});
+
+// Add a client-render route for DOM-based XSS vulnerabilities
+router.get('/client-render', (req, res) => {
+  res.render('client-render', {
+    title: 'Client-Side Rendering Vulnerabilities',
+    user: req.session.user || null,
+    message: req.query.message || '',
+    template: req.query.template || '<div>${name} has role: ${role}</div>',
+    renderMode: req.query.renderMode || 'safe'
+  });
 });
 
 module.exports = router; 

@@ -1363,7 +1363,7 @@ router.post('/render-template', (req, res) => {
   try {
     // Simulate template rendering with eval (extremely dangerous!)
     const ejs = require('ejs');
-    const renderedTemplate = ejs.render(template, data || {});
+    const renderedTemplate = ejs.render(template, data ? JSON.parse(data) : {});
     
     // Check if this is an SSTI attack that accessed environment variables
     if (template.includes('process.env')) {
@@ -1528,30 +1528,6 @@ router.post('/encrypt-data', (req, res) => {
     algorithm: 'XOR with key, Base64 encoded',
     message: 'Data encrypted successfully'
   });
-});
-
-// Template rendering API with SSTI vulnerability
-router.post('/render-template', (req, res) => {
-  const { template, context } = req.body;
-  
-  if (!template) {
-    return res.status(400).json({ error: 'Template is required' });
-  }
-  
-  try {
-    // Vulnerable templating - directly evaluates template with user data
-    const result = eval('`' + template + '`');
-    
-    res.json({
-      rendered: result,
-      message: 'Template rendered successfully'
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Template rendering failed',
-      message: error.message
-    });
-  }
 });
 
 // Deserialization API with vulnerable deserialization
