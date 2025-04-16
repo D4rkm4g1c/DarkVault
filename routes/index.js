@@ -316,6 +316,17 @@ router.get('/admin', (req, res) => {
     return res.redirect('/login');
   }
   
+  // Load system settings
+  const defaultSettings = {
+    debug_mode: '0',
+    error_logging: 'standard',
+    user_registration: 'enabled',
+    default_role: 'user'
+  };
+  
+  // In a real app, these would be loaded from the database
+  const settings = defaultSettings;
+  
   db.all("SELECT * FROM users", (err, users) => {
     if (err) {
       console.error(err);
@@ -325,24 +336,160 @@ router.get('/admin', (req, res) => {
     res.render('admin', {
       title: 'Admin Panel - DarkVault',
       user: req.session.user,
-      users: users
+      users: users,
+      settings: settings
     });
   });
 });
 
-// Admin settings route
+// Admin logs
+router.get('/admin/logs', (req, res) => {
+  if (!req.session.user || (!req.session.user.isAdmin && req.session.user.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  
+  db.all("SELECT l.*, u.username FROM logs l LEFT JOIN users u ON l.user_id = u.id ORDER BY l.created_at DESC", (err, logs) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send('Database error');
+    }
+    
+    res.render('admin_logs', {
+      title: 'System Logs - DarkVault',
+      user: req.session.user,
+      logs: logs
+    });
+  });
+});
+
+// Admin settings
 router.post('/admin/settings', (req, res) => {
   if (!req.session.user || (!req.session.user.isAdmin && req.session.user.role !== 'admin')) {
     return res.redirect('/login');
   }
   
-  const { debug_mode, error_logging } = req.body;
+  const { debug_mode, error_logging, user_registration, default_role } = req.body;
   
   // In a real app, we would save these settings to a database
-  console.log('Admin settings updated:', { debug_mode, error_logging });
+  console.log('Admin settings updated:', { debug_mode, error_logging, user_registration, default_role });
   
   req.flash('success_msg', 'Settings updated successfully');
   res.redirect('/admin');
+});
+
+// Add user (admin)
+router.post('/admin/users/add', (req, res) => {
+  if (!req.session.user || (!req.session.user.isAdmin && req.session.user.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  
+  const { username, password, email, role } = req.body;
+  const isAdmin = role === 'admin' ? 1 : 0;
+  
+  if (!username || !password || !email) {
+    req.flash('error_msg', 'All fields are required');
+    return res.redirect('/admin');
+  }
+  
+  db.findUserByUsername(username, (err, existingUser) => {
+    if (err) {
+      console.error('Error checking username:', err);
+      req.flash('error_msg', 'Database error');
+      return res.redirect('/admin');
+    }
+    
+    if (existingUser) {
+      req.flash('error_msg', 'Username already exists');
+      return res.redirect('/admin');
+    }
+    
+    db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
+      [username, password, email, role, isAdmin], (err) => {
+        if (err) {
+          console.error('Error creating user:', err);
+          req.flash('error_msg', 'Failed to create user');
+          return res.redirect('/admin');
+        }
+        
+        req.flash('success_msg', 'User created successfully');
+        res.redirect('/admin');
+      });
+  });
+});
+
+// Edit user (admin)
+router.post('/admin/users/edit', (req, res) => {
+  if (!req.session.user || (!req.session.user.isAdmin && req.session.user.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  
+  const { user_id, username, email, role, isAdmin, password } = req.body;
+  
+  if (!user_id || !username || !email) {
+    req.flash('error_msg', 'Required fields are missing');
+    return res.redirect('/admin');
+  }
+  
+  // If password is provided, update it too; otherwise, keep the existing password
+  if (password && password.trim() !== '') {
+    db.run("UPDATE users SET username = ?, email = ?, role = ?, isAdmin = ?, password = ? WHERE id = ?", 
+      [username, email, role, isAdmin, password, user_id], (err) => {
+        if (err) {
+          console.error('Error updating user:', err);
+          req.flash('error_msg', 'Failed to update user');
+          return res.redirect('/admin');
+        }
+        
+        req.flash('success_msg', 'User updated successfully');
+        res.redirect('/admin');
+      });
+  } else {
+    db.run("UPDATE users SET username = ?, email = ?, role = ?, isAdmin = ? WHERE id = ?", 
+      [username, email, role, isAdmin, user_id], (err) => {
+        if (err) {
+          console.error('Error updating user:', err);
+          req.flash('error_msg', 'Failed to update user');
+          return res.redirect('/admin');
+        }
+        
+        req.flash('success_msg', 'User updated successfully');
+        res.redirect('/admin');
+      });
+  }
+});
+
+// Delete user (admin)
+router.get('/admin/users/delete/:id', (req, res) => {
+  if (!req.session.user || (!req.session.user.isAdmin && req.session.user.role !== 'admin')) {
+    return res.redirect('/login');
+  }
+  
+  const userId = req.params.id;
+  
+  // Don't allow deleting yourself
+  if (req.session.user.id == userId) {
+    req.flash('error_msg', 'You cannot delete your own account');
+    return res.redirect('/admin');
+  }
+  
+  db.run("DELETE FROM users WHERE id = ?", [userId], (err) => {
+    if (err) {
+      console.error('Error deleting user:', err);
+      req.flash('error_msg', 'Failed to delete user');
+      return res.redirect('/admin');
+    }
+    
+    req.flash('success_msg', 'User deleted successfully');
+    res.redirect('/admin');
+  });
+});
+
+// API Documentation
+router.get('/api/docs', (req, res) => {
+  res.render('api_docs', {
+    title: 'API Documentation - DarkVault',
+    user: req.session.user || null
+  });
 });
 
 // Users list page
