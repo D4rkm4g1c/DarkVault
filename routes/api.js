@@ -6,6 +6,7 @@ const md5 = require('md5');
 const db = new sqlite3.Database('./darkvault.db');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 
 // JWT Secret (intentionally weak)
 const JWT_SECRET = "darkvault-secret-key";
@@ -140,6 +141,20 @@ router.get('/users', checkJwt, (req, res) => {
 router.get('/users/:id', checkJwt, (req, res) => {
   // IDOR vulnerability - missing authorization check
   const userId = req.params.id;
+  
+  // Special check for the hidden user with the flag
+  if (userId === '9999') {
+    return res.json({
+      user: {
+        id: 9999,
+        username: "hidden_admin",
+        email: "super_secret@darkvault.com",
+        isAdmin: true,
+        flag: "DARK{1d0r_vuln3r4b1l1ty}"
+      },
+      message: "Congratulations! You've discovered the hidden admin account."
+    });
+  }
   
   db.get("SELECT id, username, email, isAdmin FROM users WHERE id = ?", [userId], (err, user) => {
     if (err) {
@@ -405,10 +420,14 @@ router.put('/settings', checkJwt, (req, res) => {
 
 // File upload vulnerability
 router.post('/upload', checkJwt, (req, res) => {
-  const { filename, fileContent } = req.body;
+  const { filename, fileContent, fileType } = req.body;
+  
+  if (!filename || !fileContent) {
+    return res.status(400).json({ error: 'Filename and content are required' });
+  }
   
   // No validation of file extension or content type
-  // Vulnerable to path traversal attacks
+  // Vulnerable to path traversal attacks and uploading malicious files
   const filePath = path.join(__dirname, '..', 'uploads', filename);
   
   // Ensure uploads directory exists
@@ -416,9 +435,24 @@ router.post('/upload', checkJwt, (req, res) => {
     fs.mkdirSync(path.join(__dirname, '..', 'uploads'));
   }
   
+  // Check if this is an attempt to upload a malicious file
+  const dangerousExtensions = ['.php', '.jsp', '.asp', '.cgi', '.exe', '.sh', '.pl'];
+  const hasExploitableExtension = dangerousExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+  
   fs.writeFile(filePath, fileContent, (err) => {
     if (err) {
       return res.status(500).json({ error: 'Error uploading file' });
+    }
+    
+    let response = {
+      message: 'File uploaded successfully',
+      filePath
+    };
+    
+    // If they uploaded a potentially malicious file, give them the flag
+    if (hasExploitableExtension) {
+      response.flag = "DARK{f1l3_upl04d_byp4ss3d}";
+      response.note = "You've successfully uploaded a potentially executable file!";
     }
     
     db.run("INSERT INTO files (filename, path, uploaded_by) VALUES (?, ?, ?)",
@@ -427,10 +461,7 @@ router.post('/upload', checkJwt, (req, res) => {
           return res.status(500).json({ error: 'Error recording file upload' });
         }
         
-        res.status(201).json({ 
-          message: 'File uploaded successfully',
-          filePath
-        });
+        res.status(201).json(response);
       });
   });
 });
@@ -547,7 +578,10 @@ router.post('/graphql', (req, res) => {
     let result = {};
     
     // Simulate GraphQL processing with vulnerable eval
-    if (query.includes('IntrospectionQuery')) {
+    if (query.includes('IntrospectionQuery') || query.includes('__schema')) {
+      // Flag for successful introspection attack
+      const flag = "DARK{gr4phql_1ntr0sp3ct10n}";
+      
       // Information disclosure through introspection
       result = {
         __schema: {
@@ -557,7 +591,8 @@ router.post('/graphql', (req, res) => {
               { name: 'username', type: 'String' },
               { name: 'email', type: 'String' },
               { name: 'password', type: 'String' }, // Sensitive field exposed
-              { name: 'isAdmin', type: 'Boolean' }
+              { name: 'isAdmin', type: 'Boolean' },
+              { name: 'secretFlag', type: 'String', description: flag }
             ]},
             { name: 'Product', fields: [
               { name: 'id', type: 'ID' },
@@ -669,10 +704,11 @@ router.post('/search-users', (req, res) => {
   if (username && (username.includes('$') || username.includes('{'))) {
     console.log('POTENTIAL NOSQL INJECTION DETECTED:', username);
     
-    // Return all users as if the injection worked
+    // Return all users as if the injection worked plus a flag
     return res.json({
       message: 'Query executed',
       query: query,
+      flag: "DARK{n0sql_1nj3ct10n_m4st3r}",
       results: [
         { id: 1, username: 'admin', email: 'admin@darkvault.com', role: 'admin' },
         { id: 2, username: 'user1', email: 'user1@example.com', role: 'user' },
@@ -722,6 +758,17 @@ router.post('/encrypt-data', (req, res) => {
   
   const encryptedData = weakEncrypt(data, key + weakIV);
   
+  // Check if user is trying to break the encryption
+  if (key === 'test' && data.includes('secret')) {
+    // If they're testing the encryption with a specific pattern, give them the flag
+    return res.json({
+      success: true,
+      encryptedData: encryptedData,
+      message: "Encryption successful but insecure!",
+      flag: "DARK{w34k_crypt0_3xpl01t3d}"
+    });
+  }
+  
   // Information disclosure: returning too much data about the encryption process
   res.json({
     success: true,
@@ -734,8 +781,46 @@ router.post('/encrypt-data', (req, res) => {
   });
 });
 
-// Path Traversal Vulnerability in File Operations API
-// This route is vulnerable to path traversal attacks
+// XSS Vulnerability in message board
+router.post('/messages', (req, res) => {
+  const { title, content, author } = req.body;
+  
+  if (!title || !content) {
+    return res.status(400).json({ error: 'Title and content are required' });
+  }
+  
+  // VULNERABLE: No sanitization of user input for XSS
+  // Store the message (simulated)
+  const messageId = Date.now();
+  
+  // Check if this is an XSS attempt
+  if (content.includes('<script>') || content.includes('onerror=') || content.includes('javascript:')) {
+    console.log('XSS ATTEMPT DETECTED:', content);
+    
+    // In a real app, this would actually be vulnerable
+    // Here we'll simulate the flag being captured when XSS is attempted
+    return res.json({
+      id: messageId,
+      title,
+      content,
+      author: author || 'Anonymous',
+      timestamp: new Date().toISOString(),
+      message: "Message posted successfully",
+      flag: "DARK{xss_3xpl01t3r}"
+    });
+  }
+  
+  res.json({
+    id: messageId,
+    title,
+    content,
+    author: author || 'Anonymous',
+    timestamp: new Date().toISOString(),
+    message: "Message posted successfully"
+  });
+});
+
+// File reading endpoint - vulnerable to path traversal
 router.get('/file', (req, res) => {
   const filename = req.query.name;
   
@@ -743,27 +828,136 @@ router.get('/file', (req, res) => {
     return res.status(400).json({ error: 'Filename is required' });
   }
   
-  // VULNERABLE: No sanitization of user input
-  // Attacker can use "../" to traverse directories
-  const filePath = path.join(__dirname, '../assets/', filename);
-  
-  console.log(`Attempting to access file: ${filePath}`);
-  
-  // Attempt to read the file
-  fs.readFile(filePath, 'utf8', (err, data) => {
-    if (err) {
-      return res.status(404).json({ 
-        error: 'File not found or cannot be read',
-        details: err.message 
+  // VULNERABLE: This is vulnerable to path traversal attacks
+  // Should validate/sanitize the filename to prevent accessing files outside intended directory
+  try {
+    const filePath = path.join(__dirname, '../assets/', filename);
+    
+    // Check if filePath contains the special flag file identifier
+    if (filePath.includes('flag.txt') || filePath.includes('/etc/darkflag')) {
+      // Return the flag for path traversal
+      return res.json({
+        content: "Congratulations! You've found a flag through path traversal: DARK{p4th_tr4v3rs4l_m4st3r}",
+        filename: filename
       });
     }
     
-    // Send file contents directly to the user
-    res.type('text/plain').send(data);
+    const data = fs.readFileSync(filePath, 'utf8');
+    res.json({ content: data, filename: filename });
+  } catch (err) {
+    // Information leakage in error message
+    res.status(500).json({ 
+      error: 'Error reading file', 
+      details: err.message, 
+      path: path.join(__dirname, '../assets/', filename) 
+    });
+  }
+});
+
+// SQL Injection vulnerability in login route
+router.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+  
+  // VULNERABLE: SQL Injection vulnerability
+  // Direct string concatenation in SQL query without parameterization
+  const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
+  
+  db.get(query, (err, user) => {
+    if (err) {
+      // VULNERABLE: Detailed error exposure
+      return res.status(500).json({ error: 'Database error', details: err.message });
+    }
+    
+    if (user) {
+      // Check if this was a successful SQL injection
+      if (username.includes("'") || username.includes("--")) {
+        // User performed SQL injection - add flag to the response
+        user.flag = "DARK{sql_m4st3r}";
+        user.message = "Congratulations! You've successfully performed SQL injection!";
+      }
+      
+      const token = generateToken(user);
+      res.json({ success: true, user, token });
+    } else {
+      res.status(401).json({ error: 'Invalid username or password' });
+    }
   });
 });
 
-// Race Condition Vulnerability - Account Balance Update
+// Command injection vulnerability in ping endpoint
+router.post('/ping', (req, res) => {
+  const { host } = req.body;
+  
+  if (!host) {
+    return res.status(400).json({ error: 'Host is required' });
+  }
+  
+  // VULNERABLE: Command injection through unsanitized user input
+  // User input is directly concatenated to a shell command
+  
+  // Create a special flag file that can be found through command injection
+  fs.writeFileSync('/tmp/cmd_flag.txt', 'DARK{c0mm4nd_1nj3ct10n_pr0}');
+  
+  console.log(`Executing ping command for host: ${host}`);
+  
+  // Vulnerable command execution
+  exec(`ping -c 4 ${host}`, (error, stdout, stderr) => {
+    if (error) {
+      return res.status(500).json({ error: 'Execution error', details: error.message });
+    }
+    
+    if (stderr) {
+      return res.status(500).json({ error: 'stderr', details: stderr });
+    }
+    
+    // Check if user is trying to read the flag file
+    if (host.includes('cat') && host.includes('cmd_flag.txt')) {
+      return res.json({
+        output: stdout,
+        message: "Command executed successfully. You found the flag!",
+        flag: "DARK{c0mm4nd_1nj3ct10n_pr0}"
+      });
+    }
+    
+    res.json({ output: stdout });
+  });
+});
+
+// JWT Manipulation Vulnerability
+router.get('/admin/dashboard', (req, res) => {
+  // Extract token from Authorization header
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication token is required' });
+  }
+  
+  try {
+    // Verify JWT token
+    const decoded = jwt.verify(token, 'darkvault-secret-key');
+    
+    // Check if user is admin
+    if (decoded.isAdmin) {
+      // User has admin privileges - provide admin flag
+      return res.json({
+        message: "Welcome to the admin dashboard!",
+        user: decoded,
+        flag: "DARK{jwt_4dm1n_3sc4l4t10n}"
+      });
+    } else {
+      return res.status(403).json({ error: 'Admin privileges required' });
+    }
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token', details: err.message });
+  }
+});
+
+// Race condition vulnerability
 router.post('/update-balance', (req, res) => {
   const { userId, amount } = req.body;
   
@@ -773,6 +967,11 @@ router.post('/update-balance', (req, res) => {
   
   // VULNERABLE: Race condition example
   // Simulating a database read-then-write operation without proper locking
+  
+  // Create a counter for tracking the number of successful exploits
+  if (!global.raceExploitCounter) {
+    global.raceExploitCounter = 0;
+  }
   
   // Step 1: Read current balance (vulnerable to race condition)
   console.log(`[${new Date().toISOString()}] Reading balance for user ${userId}`);
@@ -790,15 +989,197 @@ router.post('/update-balance', (req, res) => {
     setTimeout(() => {
       console.log(`[${new Date().toISOString()}] Updating balance to: ${newBalance}`);
       
+      // Increment the exploit counter for this request
+      global.raceExploitCounter++;
+      
+      // If user has triggered the race condition multiple times, provide the flag
+      let flagData = {};
+      if (global.raceExploitCounter >= 3) {
+        flagData = {
+          raceExploit: true,
+          flag: "DARK{r4c3_c0nd1t10n_3xpl01t3d}",
+          message: "Congratulations! You've successfully exploited the race condition vulnerability!"
+        };
+        // Reset counter
+        global.raceExploitCounter = 0;
+      }
+      
       // Return the updated balance (in a real app, this would be after DB write)
       res.json({ 
         userId, 
         oldBalance: currentBalance,
         newBalance,
-        message: 'Balance updated successfully' 
+        message: 'Balance updated successfully',
+        exploitCounter: global.raceExploitCounter,
+        ...flagData
       });
     }, 500); // Intentional delay to make race condition more likely
   }, 500);
+});
+
+// CSRF Vulnerability demo
+router.post('/update-email', (req, res) => {
+  const { userId, newEmail } = req.body;
+  
+  if (!userId || !newEmail) {
+    return res.status(400).json({ error: 'User ID and new email are required' });
+  }
+  
+  // VULNERABLE: No CSRF token validation
+  // In a real secure app, this would check for a valid CSRF token
+  
+  // Simulate updating user email
+  console.log(`Updating email for user ${userId} to ${newEmail}`);
+  
+  // Check for CSRF testing pattern
+  if (newEmail.includes('csrf') || newEmail.includes('attacker')) {
+    return res.json({
+      success: true,
+      message: "Email updated successfully",
+      flag: "DARK{csrf_pr0t3ct10n_byp4ss3d}",
+      note: "This endpoint is vulnerable to CSRF because it doesn't validate any tokens"
+    });
+  }
+  
+  res.json({
+    success: true,
+    message: "Email updated successfully",
+    note: "This endpoint is vulnerable to CSRF because it doesn't validate any tokens"
+  });
+});
+
+// Prototype Pollution vulnerability
+router.post('/merge-config', (req, res) => {
+  const { userConfig } = req.body;
+  
+  if (!userConfig || typeof userConfig !== 'object') {
+    return res.status(400).json({ error: 'Valid user configuration object is required' });
+  }
+  
+  // Default config
+  const defaultConfig = {
+    theme: 'dark',
+    notifications: true,
+    language: 'en'
+  };
+  
+  // VULNERABLE: Unsafe merging of objects can lead to prototype pollution
+  // In a real app, this would use something like lodash.merge which can be vulnerable
+  function unsafeMerge(target, source) {
+    for (const key in source) {
+      if (typeof source[key] === 'object' && source[key] !== null) {
+        if (!target[key]) target[key] = {};
+        unsafeMerge(target[key], source[key]);
+      } else {
+        target[key] = source[key];
+      }
+    }
+    return target;
+  }
+  
+  // Check if this is a prototype pollution attempt
+  if (JSON.stringify(userConfig).includes('__proto__') || 
+      JSON.stringify(userConfig).includes('constructor') || 
+      JSON.stringify(userConfig).includes('prototype')) {
+    console.log('PROTOTYPE POLLUTION ATTEMPT DETECTED:', JSON.stringify(userConfig));
+    
+    // Create merged config (would be vulnerable in a real app)
+    const mergedConfig = unsafeMerge({}, defaultConfig);
+    unsafeMerge(mergedConfig, userConfig);
+    
+    return res.json({
+      config: mergedConfig,
+      message: "Configuration merged successfully",
+      flag: "DARK{pr0t0typ3_p0llut10n_m4st3r}",
+      note: "You've successfully demonstrated a prototype pollution attack vector!"
+    });
+  }
+  
+  // Create merged config (would be vulnerable in a real app)
+  const mergedConfig = unsafeMerge({}, defaultConfig);
+  unsafeMerge(mergedConfig, userConfig);
+  
+  res.json({
+    config: mergedConfig,
+    message: "Configuration merged successfully"
+  });
+});
+
+// XXE Vulnerability in XML import
+router.post('/import-xml', (req, res) => {
+  const { xml } = req.body;
+  
+  if (!xml) {
+    return res.status(400).json({ error: 'XML data is required' });
+  }
+  
+  // VULNERABLE: Unsafe XML parsing susceptible to XXE
+  try {
+    const parser = require('xml2js').Parser({
+      explicitArray: false,
+      // Missing: disableDTD: true or other XXE protections
+    });
+    
+    parser.parseString(xml, (err, result) => {
+      if (err) {
+        return res.status(400).json({ error: 'Invalid XML', details: err.message });
+      }
+      
+      // Check if this is an XXE attack attempt
+      if (xml.includes('<!ENTITY') && xml.includes('SYSTEM')) {
+        console.log('XXE ATTACK DETECTED:', xml);
+        
+        return res.json({
+          result,
+          message: "XML processed successfully",
+          note: "You've successfully exploited an XXE vulnerability",
+          flag: "DARK{xxe_data_extr4ct0r}"
+        });
+      }
+      
+      res.json({
+        result,
+        message: "XML processed successfully"
+      });
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'XML processing error', details: err.message });
+  }
+});
+
+// SSTI Vulnerability in email templates
+router.post('/render-template', (req, res) => {
+  const { template, data } = req.body;
+  
+  if (!template) {
+    return res.status(400).json({ error: 'Template is required' });
+  }
+  
+  // VULNERABLE: Server-side template injection
+  try {
+    // Simulate template rendering with eval (extremely dangerous!)
+    const ejs = require('ejs');
+    const renderedTemplate = ejs.render(template, data || {});
+    
+    // Check if this is an SSTI attack that accessed environment variables
+    if (template.includes('process.env')) {
+      console.log('SSTI ATTACK DETECTED:', template);
+      
+      return res.json({
+        rendered: renderedTemplate,
+        message: "Template rendered successfully",
+        flag: "DARK{t3mpl4t3_1nj3ct10n}"
+      });
+    }
+    
+    res.json({
+      rendered: renderedTemplate,
+      message: "Template rendered successfully"
+    });
+  } catch (err) {
+    // Information leakage in error
+    res.status(500).json({ error: 'Template rendering error', details: err.message });
+  }
 });
 
 module.exports = router; 

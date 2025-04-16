@@ -169,6 +169,36 @@ npm start
 ```
 2. The balance might increase more than expected due to race conditions
 
+## CTF-Style Flags
+DarkVault includes hidden flags that serve as proof of successful exploitation. Each vulnerability has an associated flag in the format `DARK{unique_identifier}` that can only be obtained by successfully exploiting that vulnerability.
+
+### Flag System
+- Each flag is uniquely tied to a specific vulnerability
+- Flags are hidden in locations only accessible through successful exploitation
+- A flag tracking dashboard is available at `/flags` to monitor your progress
+- Collecting all flags demonstrates comprehensive understanding of web security concepts
+
+### Example Flag Locations
+1. **SQL Injection Flag**: Successfully exploit the login SQL injection to reveal `DARK{sql_m4st3r}`
+2. **Path Traversal Flag**: Read the flag file at `/etc/darkflag` through path traversal
+3. **XSS Flag**: Access cookies containing flag data through XSS payload
+4. **Command Injection Flag**: Execute commands to read `/opt/flag.txt`
+5. **IDOR Flag**: Access user ID 9999 to find a special flag
+6. **JWT Manipulation Flag**: Successfully modify JWT token to receive admin flag
+
+### Flag Implementation
+Flags are implemented in the following ways:
+- Hidden HTML comments in protected pages
+- Special files only accessible through vulnerabilities
+- Database records only revealed through successful injection attacks
+- Environment variables exposed through SSTI
+- Special user accounts with flag data
+- Cookie values only accessible through client-side attacks
+- Admin-only API endpoints with flag values
+- Encrypted data requiring proper key extraction
+
+For instructors: A complete list of flags and their locations is available in the `docs/flag_solutions.md` file.
+
 ## Warning
 **IMPORTANT**: This application is deliberately vulnerable and should NOT be deployed on a production server or exposed to the internet. Use only in controlled environments for educational purposes.
 
