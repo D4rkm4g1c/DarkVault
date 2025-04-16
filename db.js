@@ -101,17 +101,35 @@ db.serialize(() => {
   db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
     if (!row) {
       db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
-        ['admin', 'admin123', 'admin@darkvault.local', 'admin', 1]);
-      console.log('Default admin user created');
+        ['admin', '5f4dcc3b5aa765d61d8327deb882cf99', 'admin@darkvault.local', 'admin', 1]);
+      console.log('Default admin user created with password: SecretPassword123!');
     }
   });
 
-  // Insert default user if it doesn't exist
-  db.get("SELECT * FROM users WHERE username = 'user'", (err, row) => {
+  // Insert default user1 if it doesn't exist
+  db.get("SELECT * FROM users WHERE username = 'user1'", (err, row) => {
     if (!row) {
       db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
-        ['user', 'password123', 'user@darkvault.local', 'user', 0]);
-      console.log('Default regular user created');
+        ['user1', '482c811da5d5b4bc6d497ffa98491e38', 'user1@darkvault.local', 'user', 0]);
+      console.log('Default user1 created with password: Password123');
+    }
+  });
+
+  // Insert manager user if it doesn't exist
+  db.get("SELECT * FROM users WHERE username = 'manager'", (err, row) => {
+    if (!row) {
+      db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
+        ['manager', 'e1f72e3f0be347798eff44e298a31368', 'manager@darkvault.local', 'manager', 0]);
+      console.log('Default manager user created with password: ManageIt!2023');
+    }
+  });
+
+  // Insert test user if it doesn't exist
+  db.get("SELECT * FROM users WHERE username = 'test'", (err, row) => {
+    if (!row) {
+      db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
+        ['test', 'cc03e747a6afbbcbf8be7668acfebee5', 'test@darkvault.local', 'user', 0]);
+      console.log('Default test user created with password: test123');
     }
   });
 

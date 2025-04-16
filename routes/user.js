@@ -13,6 +13,7 @@ function generateToken(user) {
   return jwt.sign({
     id: user.id,
     username: user.username,
+    role: user.role || 'user',
     isAdmin: user.isAdmin === 1 || (user.role === 'admin' ? 1 : 0)
   }, JWT_SECRET);
 }
@@ -53,6 +54,7 @@ router.post('/login', (req, res) => {
       id: user.id,
       username: user.username,
       email: user.email,
+      role: user.role,
       isAdmin: user.isAdmin === 1 || user.role === 'admin'
     };
     
@@ -116,6 +118,7 @@ router.post('/register', (req, res) => {
           id: this.lastID,
           username,
           email,
+          role: 'user',
           isAdmin: false
         };
         

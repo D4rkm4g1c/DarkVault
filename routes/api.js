@@ -35,6 +35,23 @@ const isAdmin = (req, res, next) => {
   // Missing proper verification
   if (req.user && (req.user.isAdmin || req.user.role === 'admin')) {
     next();
+  } else if (req.user && req.user.role === 'manager') {
+    // Manager has enhanced privileges but not full admin
+    // This is still exploitable by manipulating the JWT token
+    const managerAllowedPaths = [
+      '/users', 
+      '/products', 
+      '/messages', 
+      '/todos'
+    ];
+    
+    // Check if the request path is in the manager's allowed paths
+    const requestPath = req.path.split('/')[1]; // Get first part of path
+    if (managerAllowedPaths.includes(requestPath)) {
+      next();
+    } else {
+      res.status(403).json({ error: 'Manager does not have access to this resource' });
+    }
   } else {
     // Check for backdoor parameter (intentional vulnerability)
     if (req.query.admin === 'true') {
@@ -69,8 +86,8 @@ router.post('/auth/login', (req, res) => {
     const payload = {
       id: user.id,
       username: user.username,
+      role: user.role,
       isAdmin: user.isAdmin === 1 || user.role === 'admin',
-      role: user.role
     };
     
     // Vulnerable JWT: weak secret, no expiration, no audience or issuer
@@ -81,8 +98,8 @@ router.post('/auth/login', (req, res) => {
       user: {
         id: user.id,
         username: user.username,
+        role: user.role,
         isAdmin: user.isAdmin === 1 || user.role === 'admin',
-        role: user.role
       }
     });
   });
@@ -114,8 +131,8 @@ router.post('/auth/register', (req, res) => {
         const token = jwt.sign({
           id: this.lastID,
           username,
+          role: 'user',
           isAdmin: 0,
-          role: 'user'
         }, JWT_SECRET);
         
         res.status(201).json({
@@ -123,8 +140,8 @@ router.post('/auth/register', (req, res) => {
           user: {
             id: this.lastID,
             username,
+            role: 'user',
             isAdmin: false,
-            role: 'user'
           }
         });
       });

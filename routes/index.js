@@ -20,6 +20,27 @@ function isAdmin(req, res, next) {
   if (req.session && req.session.user && (req.session.user.isAdmin || req.session.user.role === 'admin')) {
     return next();
   }
+  
+  // Manager has enhanced privileges on certain paths
+  if (req.session && req.session.user && req.session.user.role === 'manager') {
+    // Define paths that managers can access
+    const managerPaths = [
+      '/dashboard', 
+      '/users', 
+      '/products',
+      '/messages'
+    ];
+    
+    // Get the base path from the original URL
+    const basePath = '/' + req.originalUrl.split('/')[1];
+    
+    if (managerPaths.includes(basePath)) {
+      return next();
+    }
+  }
+  
+  // If we reach here, the user doesn't have sufficient permissions
+  req.flash('error', 'You do not have permission to access this page');
   res.redirect('/login');
 }
 
