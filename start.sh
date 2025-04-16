@@ -19,5 +19,10 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
+# Initialize the database and create default users
+echo "Initializing database and creating default users..."
+node init-db.js
+
 # Start the application
+echo "Starting the application..."
 npm start 

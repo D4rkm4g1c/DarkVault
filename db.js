@@ -1,15 +1,19 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const md5 = require('md5');  // Ensure md5 is properly imported
 
 // Create database directory if it doesn't exist
 const dbDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir);
+  console.log('Created database directory:', dbDir);
 }
 
 // Initialize database connection
-const db = new sqlite3.Database(path.join(dbDir, 'darkvault.db'));
+const dbPath = path.join(dbDir, 'darkvault.db');
+console.log('Database path:', dbPath);
+const db = new sqlite3.Database(dbPath);
 
 // Initialize tables
 db.serialize(() => {
@@ -99,37 +103,81 @@ db.serialize(() => {
 
   // Insert default admin user if it doesn't exist
   db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
+    if (err) {
+      console.error('Error checking for admin user:', err);
+    }
+    
     if (!row) {
       db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
-        ['admin', '5f4dcc3b5aa765d61d8327deb882cf99', 'admin@darkvault.local', 'admin', 1]);
-      console.log('Default admin user created with password: SecretPassword123!');
+        ['admin', md5('SecretPassword123!'), 'admin@darkvault.local', 'admin', 1], function(err) {
+          if (err) {
+            console.error('Error creating admin user:', err);
+          } else {
+            console.log('Default admin user created with password: SecretPassword123!');
+          }
+        });
+    } else {
+      console.log('Admin user already exists');
     }
   });
 
   // Insert default user1 if it doesn't exist
   db.get("SELECT * FROM users WHERE username = 'user1'", (err, row) => {
+    if (err) {
+      console.error('Error checking for user1:', err);
+    }
+    
     if (!row) {
       db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
-        ['user1', '482c811da5d5b4bc6d497ffa98491e38', 'user1@darkvault.local', 'user', 0]);
-      console.log('Default user1 created with password: Password123');
+        ['user1', md5('Password123'), 'user1@darkvault.local', 'user', 0], function(err) {
+          if (err) {
+            console.error('Error creating user1:', err);
+          } else {
+            console.log('Default user1 created with password: Password123');
+          }
+        });
+    } else {
+      console.log('User1 already exists');
     }
   });
 
   // Insert manager user if it doesn't exist
   db.get("SELECT * FROM users WHERE username = 'manager'", (err, row) => {
+    if (err) {
+      console.error('Error checking for manager user:', err);
+    }
+    
     if (!row) {
       db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
-        ['manager', 'e1f72e3f0be347798eff44e298a31368', 'manager@darkvault.local', 'manager', 0]);
-      console.log('Default manager user created with password: ManageIt!2023');
+        ['manager', md5('ManageIt!2023'), 'manager@darkvault.local', 'manager', 0], function(err) {
+          if (err) {
+            console.error('Error creating manager user:', err);
+          } else {
+            console.log('Default manager user created with password: ManageIt!2023');
+          }
+        });
+    } else {
+      console.log('Manager user already exists');
     }
   });
 
   // Insert test user if it doesn't exist
   db.get("SELECT * FROM users WHERE username = 'test'", (err, row) => {
+    if (err) {
+      console.error('Error checking for test user:', err);
+    }
+    
     if (!row) {
       db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
-        ['test', 'cc03e747a6afbbcbf8be7668acfebee5', 'test@darkvault.local', 'user', 0]);
-      console.log('Default test user created with password: test123');
+        ['test', md5('test123'), 'test@darkvault.local', 'user', 0], function(err) {
+          if (err) {
+            console.error('Error creating test user:', err);
+          } else {
+            console.log('Default test user created with password: test123');
+          }
+        });
+    } else {
+      console.log('Test user already exists');
     }
   });
 
@@ -162,9 +210,27 @@ db.findUserByCredentials = function(username, password, callback) {
     return callback(null, null); // Return no user found
   }
   
+  // Hash the password with md5 before comparing
+  const hashedPassword = md5(password);
+  
   // Still vulnerable to more sophisticated SQL injection
-  const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
-  this.get(query, callback);
+  const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${hashedPassword}'`;
+  console.log('Login attempt:', username); // Debug logging
+  
+  this.get(query, (err, user) => {
+    if (err) {
+      console.error('Database error during login:', err);
+      return callback(err, null);
+    }
+    
+    if (!user) {
+      console.log('Login failed for user:', username);
+    } else {
+      console.log('Login successful for user:', username);
+    }
+    
+    callback(null, user);
+  });
 };
 
 // Find user by username
