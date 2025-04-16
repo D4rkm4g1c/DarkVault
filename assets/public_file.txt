@@ -1,0 +1,2 @@
+This is a public file that should be accessible via the normal file API.
+It contains non-sensitive information meant for public access. 

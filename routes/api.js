@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const sqlite3 = require('sqlite3').verbose();
+const db = require('../db');
 const md5 = require('md5');
-const db = new sqlite3.Database('./darkvault.db');
+const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
@@ -32,7 +33,7 @@ const checkJwt = (req, res, next) => {
 // Vulnerable admin check (easily bypassed)
 const isAdmin = (req, res, next) => {
   // Missing proper verification
-  if (req.user && req.user.isAdmin) {
+  if (req.user && (req.user.isAdmin || req.user.role === 'admin')) {
     next();
   } else {
     // Check for backdoor parameter (intentional vulnerability)
@@ -68,7 +69,8 @@ router.post('/auth/login', (req, res) => {
     const payload = {
       id: user.id,
       username: user.username,
-      isAdmin: user.isAdmin
+      isAdmin: user.isAdmin === 1 || user.role === 'admin',
+      role: user.role
     };
     
     // Vulnerable JWT: weak secret, no expiration, no audience or issuer
@@ -79,7 +81,8 @@ router.post('/auth/login', (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        isAdmin: user.isAdmin ? true : false
+        isAdmin: user.isAdmin === 1 || user.role === 'admin',
+        role: user.role
       }
     });
   });
@@ -101,8 +104,8 @@ router.post('/auth/register', (req, res) => {
     // Vulnerable password storage (md5)
     const hashedPassword = md5(password);
     
-    db.run("INSERT INTO users (username, password, email) VALUES (?, ?, ?)", 
-      [username, hashedPassword, email], function(err) {
+    db.run("INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)", 
+      [username, hashedPassword, email, 'user', 0], function(err) {
         if (err) {
           return res.status(500).json({ error: 'Error registering user' });
         }
@@ -111,7 +114,8 @@ router.post('/auth/register', (req, res) => {
         const token = jwt.sign({
           id: this.lastID,
           username,
-          isAdmin: 0
+          isAdmin: 0,
+          role: 'user'
         }, JWT_SECRET);
         
         res.status(201).json({
@@ -119,7 +123,8 @@ router.post('/auth/register', (req, res) => {
           user: {
             id: this.lastID,
             username,
-            isAdmin: false
+            isAdmin: false,
+            role: 'user'
           }
         });
       });

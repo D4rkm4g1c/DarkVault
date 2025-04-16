@@ -1,0 +1,158 @@
+/* DarkVault - Custom Styles */
+
+body {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+}
+
+/* Navbar customization */
+.navbar-brand {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+/* Card styling */
+.card {
+    margin-bottom: 20px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    font-weight: 600;
+}
+
+/* Flag cards */
+.flag-card {
+    transition: all 0.3s ease;
+}
+
+.flag-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Form styling */
+.form-control:focus {
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    border-color: #86b7fe;
+}
+
+.form-text.text-muted {
+    font-size: 0.8rem;
+}
+
+/* Vulnerability notices */
+.vulnerability-hint {
+    background-color: #fff3cd;
+    border-left: 4px solid #ffc107;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+/* Code blocks */
+pre {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.25rem;
+    border: 1px solid #dee2e6;
+    overflow-x: auto;
+}
+
+code {
+    background-color: #f8f9fa;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    color: #d63384;
+}
+
+/* Footer */
+.footer {
+    margin-top: auto;
+    padding: 1.5rem 0;
+    background-color: #343a40;
+    color: white;
+}
+
+/* Dashboard cards */
+.dashboard-card {
+    height: 100%;
+    transition: all 0.3s ease;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-card .card-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-card .card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.dashboard-card .card-text {
+    flex-grow: 1;
+}
+
+/* Security vulnerability hints */
+.security-hint {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.9rem;
+}
+
+/* Flag styles */
+.flag-found {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+    border-radius: 0.25rem;
+    padding: 0.75rem;
+    margin-top: 1rem;
+}
+
+.flag-code {
+    font-family: monospace;
+    font-weight: bold;
+    background-color: #ffffff;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+}
+
+/* Dark mode styles */
+.dark-mode {
+    background-color: #222;
+    color: #f8f9fa;
+}
+
+.dark-mode .card {
+    background-color: #333;
+    color: #f8f9fa;
+}
+
+.dark-mode .card-header {
+    background-color: #444;
+}
+
+.dark-mode .form-control {
+    background-color: #444;
+    color: #f8f9fa;
+    border-color: #555;
+}
+
+.dark-mode .table {
+    color: #f8f9fa;
+}
+
+.dark-mode code, .dark-mode pre {
+    background-color: #444;
+    color: #f8f9fa;
+} 

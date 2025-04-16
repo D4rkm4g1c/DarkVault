@@ -1,74 +1,191 @@
-// Vulnerable privilege escalation through parameter manipulation
-// Demonstrates broken access control and parameter tampering
-router.post('/update-role', (req, res) => {
-  const { userId, newRole } = req.body;
+const express = require('express');
+const router = express.Router();
+const sqlite3 = require('sqlite3').verbose();
+const db = require('../db');
+const md5 = require('md5');
+const jwt = require('jsonwebtoken');
+
+// JWT Secret (intentionally weak)
+const JWT_SECRET = "darkvault-secret-key";
+
+// Helper function to generate JWT token
+function generateToken(user) {
+  return jwt.sign({
+    id: user.id,
+    username: user.username,
+    isAdmin: user.isAdmin === 1 || (user.role === 'admin' ? 1 : 0)
+  }, JWT_SECRET);
+}
+
+// Login route
+router.post('/login', (req, res) => {
+  const { username, password } = req.body;
   
-  // Vulnerable: No proper authorization check, only checking if user is logged in
-  if (!req.session.userId) {
-    return res.status(401).json({ error: 'You must be logged in' });
+  if (!username || !password) {
+    return res.status(400).render('login', {
+      title: 'Login - DarkVault',
+      error: 'Username and password are required'
+    });
   }
   
-  // Vulnerable: No validation that the user has admin rights to change roles
-  // Also vulnerable to parameter tampering as client controls both userId and newRole
+  // VULNERABLE: Direct string concatenation in SQL query
+  // This is vulnerable to SQL injection
+  const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${md5(password)}'`;
   
-  db.query(`UPDATE users SET role = '${newRole}' WHERE id = ${userId}`, (err, result) => {
+  db.get(query, (err, user) => {
     if (err) {
       console.error(err);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+      return res.status(500).render('login', {
+        title: 'Login - DarkVault',
+        error: 'Database error'
+      });
     }
     
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'User not found' });
+    if (!user) {
+      return res.status(401).render('login', {
+        title: 'Login - DarkVault',
+        error: 'Invalid username or password'
+      });
     }
     
-    // Information disclosure - confirms the operation was successful
-    return res.json({ 
-      success: true, 
-      message: `User role updated to ${newRole}`,
-      affectedUser: userId,
-      changedBy: req.session.userId
+    // Store user in session
+    req.session.user = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin === 1 || user.role === 'admin'
+    };
+    
+    // Check if this was a successful SQL injection
+    if (username.includes("'") || username.includes("--")) {
+      // User performed SQL injection - add flag
+      req.session.user.flag = "DARK{sql_m4st3r}";
+    }
+    
+    // Redirect to dashboard
+    res.redirect('/dashboard');
+  });
+});
+
+// Register route
+router.post('/register', (req, res) => {
+  const { username, password, email } = req.body;
+  
+  if (!username || !password || !email) {
+    return res.status(400).render('register', {
+      title: 'Register - DarkVault',
+      error: 'All fields are required'
+    });
+  }
+  
+  // Check if username exists
+  db.get("SELECT * FROM users WHERE username = ?", [username], (err, user) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).render('register', {
+        title: 'Register - DarkVault',
+        error: 'Database error'
+      });
+    }
+    
+    if (user) {
+      return res.status(400).render('register', {
+        title: 'Register - DarkVault',
+        error: 'Username already exists'
+      });
+    }
+    
+    // Insert new user
+    // VULNERABLE: Using weak password hashing (md5)
+    const hashedPassword = md5(password);
+    
+    db.run(
+      "INSERT INTO users (username, password, email, role, isAdmin) VALUES (?, ?, ?, ?, ?)",
+      [username, hashedPassword, email, 'user', 0],
+      function(err) {
+        if (err) {
+          console.error(err);
+          return res.status(500).render('register', {
+            title: 'Register - DarkVault',
+            error: 'Error registering user'
+          });
+        }
+        
+        // Store user in session
+        req.session.user = {
+          id: this.lastID,
+          username,
+          email,
+          isAdmin: false
+        };
+        
+        // Redirect to dashboard
+        res.redirect('/dashboard');
+      }
+    );
+  });
+});
+
+// Profile route
+router.get('/:id', (req, res) => {
+  const userId = req.params.id;
+  
+  // VULNERABLE: Insecure Direct Object Reference (IDOR)
+  // Missing authorization check - any user can access any profile
+  
+  // Special check for the hidden user with the flag
+  if (userId === '9999') {
+    return res.render('profile', {
+      title: 'Hidden Profile - DarkVault',
+      user: req.session.user || null,
+      profile: {
+        id: 9999,
+        username: "hidden_admin",
+        email: "super_secret@darkvault.com",
+        isAdmin: true,
+        flag: "DARK{1d0r_vuln3r4b1l1ty}"
+      },
+      message: "Congratulations! You've discovered the hidden admin account."
+    });
+  }
+  
+  db.get("SELECT id, username, email, role, isAdmin FROM users WHERE id = ?", [userId], (err, profile) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).render('error', {
+        title: 'Error - DarkVault',
+        errorCode: 500,
+        message: 'Database error',
+        user: req.session.user || null
+      });
+    }
+    
+    if (!profile) {
+      return res.status(404).render('error', {
+        title: '404 - User Not Found',
+        errorCode: 404,
+        message: 'The requested user profile was not found.',
+        user: req.session.user || null
+      });
+    }
+    
+    // Also fetch user preferences (information leakage)
+    db.get("SELECT * FROM user_preferences WHERE user_id = ?", [userId], (err, preferences) => {
+      profile.preferences = preferences || {};
+      
+      res.render('profile', {
+        title: `${profile.username}'s Profile - DarkVault`,
+        user: req.session.user || null,
+        profile: {
+          id: profile.id,
+          username: profile.username,
+          email: profile.email,
+          isAdmin: profile.isAdmin === 1 || profile.role === 'admin',
+          preferences: profile.preferences
+        }
+      });
     });
   });
 });
 
-// Race condition vulnerability demonstration
-let currentPromoCode = 'DARKV50';
-let promoUsageCount = 0;
-const MAX_PROMO_USES = 5;
-
-router.post('/apply-promo', (req, res) => {
-  const { promoCode } = req.body;
-  
-  if (promoCode !== currentPromoCode) {
-    return res.status(400).json({ error: 'Invalid promo code' });
-  }
-  
-  // Race condition vulnerability:
-  // Check if promo code has been used too many times
-  if (promoUsageCount >= MAX_PROMO_USES) {
-    return res.status(400).json({ error: 'Promo code usage limit reached' });
-  }
-  
-  // Vulnerable part - no lock mechanism between check and increment
-  // This creates a time gap where multiple requests can pass the check
-  // before the counter is actually incremented
-  
-  // Simulate some processing time that increases the race condition window
-  setTimeout(() => {
-    // Increment usage count
-    promoUsageCount++;
-    
-    // Apply discount to user account
-    const discount = 50; // $50 off
-    
-    // Log the usage
-    console.log(`Promo code used by user ${req.session.userId}. Usage count: ${promoUsageCount}`);
-    
-    res.json({ 
-      success: true, 
-      message: `$${discount} discount applied to your account!`,
-      usageCount: promoUsageCount,
-      maxUses: MAX_PROMO_USES
-    });
-  }, 1000); // 1 second delay to make race condition more likely
-}); 
+module.exports = router; 
