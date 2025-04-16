@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DarkVault - Admin Panel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #444;
+        }
+        h1, h2 {
+            color: #00aaff;
+        }
+        .nav-links a {
+            color: #00aaff;
+            text-decoration: none;
+            margin-left: 15px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        .admin-card {
+            background-color: #2a2a2a;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+        th {
+            background-color: #333;
+        }
+        tr:hover {
+            background-color: #333;
+        }
+        .action-btn {
+            background-color: #00aaff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .action-btn:hover {
+            background-color: #0088cc;
+        }
+        .delete-btn {
+            background-color: #ff5555;
+        }
+        .delete-btn:hover {
+            background-color: #dd3333;
+        }
+        .admin-links {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .admin-links a {
+            background-color: #00aaff;
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+        .admin-links a:hover {
+            background-color: #0088cc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Admin Panel</h1>
+            <div class="nav-links">
+                <a href="/dashboard">Dashboard</a>
+                <a href="/products">Products</a>
+                <a href="/contact">Contact</a>
+                <a href="/ping">Network Tools</a>
+                <a href="/admin/logs">System Logs</a>
+                <a href="/logout">Logout</a>
+            </div>
+        </header>
+        
+        <div class="admin-links">
+            <a href="/admin">User Management</a>
+            <a href="/admin/logs">View System Logs</a>
+        </div>
+        
+        <div class="admin-card">
+            <h2>User Management</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Admin</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (users && users.length > 0) { %>
+                        <% users.forEach(function(user) { %>
+                            <tr>
+                                <td><%= user.id %></td>
+                                <td><%= user.username %></td>
+                                <td><%= user.email %></td>
+                                <td><%= user.isAdmin ? 'Yes' : 'No' %></td>
+                                <td>
+                                    <a href="/user/<%= user.id %>" class="action-btn">View</a>
+                                    <button class="action-btn">Edit</button>
+                                    <button class="action-btn delete-btn">Delete</button>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    <% } else { %>
+                        <tr>
+                            <td colspan="5">No users found</td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="admin-card">
+            <h2>System Settings</h2>
+            <p>This section would contain system configuration settings.</p>
+            
+            <div style="margin-top: 20px;">
+                <form action="/admin/settings" method="POST">
+                    <div style="display: flex; margin-bottom: 10px;">
+                        <label style="width: 200px;">Debug Mode:</label>
+                        <select name="debug_mode" style="background-color: #333; color: #fff; padding: 5px;">
+                            <option value="1">Enabled</option>
+                            <option value="0">Disabled</option>
+                        </select>
+                    </div>
+                    
+                    <div style="display: flex; margin-bottom: 10px;">
+                        <label style="width: 200px;">Error Logging:</label>
+                        <select name="error_logging" style="background-color: #333; color: #fff; padding: 5px;">
+                            <option value="verbose">Verbose</option>
+                            <option value="standard">Standard</option>
+                            <option value="minimal">Minimal</option>
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="action-btn">Save Settings</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

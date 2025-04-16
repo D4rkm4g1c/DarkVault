@@ -1,0 +1,28 @@
+=============================================
+WELCOME TO DARKVAULT - SECURITY TESTING PLATFORM
+=============================================
+
+DarkVault is a deliberately vulnerable web application designed for security professionals and students to practice identifying and exploiting common web vulnerabilities.
+
+WARNING: This application contains intentional security flaws. DO NOT deploy it on a public server or expose it to the internet!
+
+FEATURES:
+---------
+- SQL Injection vulnerabilities
+- Cross-Site Scripting (XSS) vulnerabilities
+- Insecure Direct Object References (IDOR)
+- Command Injection
+- Local File Inclusion (LFI)
+- XML External Entity (XXE) Injection
+- Server-Side Request Forgery (SSRF)
+- And many more!
+
+Get started by exploring the application and identifying security issues. Good luck!
+
+CREDENTIALS:
+-----------
+Admin account: admin / SecretPassword123!
+
+CONFIGURATION:
+-------------
+See the config.txt file for system configuration details. 

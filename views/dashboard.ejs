@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DarkVault - Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #444;
+        }
+        h1, h2, h3 {
+            color: #00aaff;
+        }
+        .nav-links a {
+            color: #00aaff;
+            text-decoration: none;
+            margin-left: 15px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+        .card {
+            background-color: #2a2a2a;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .message-form textarea {
+            width: 100%;
+            height: 80px;
+            margin-bottom: 10px;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 3px;
+            padding: 8px;
+        }
+        .message-list {
+            margin-top: 20px;
+        }
+        .message {
+            background-color: #333;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .message-author {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        button {
+            background-color: #00aaff;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0088cc;
+        }
+        input[type="text"], input[type="file"], textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 3px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .quick-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .quick-link {
+            background-color: #333;
+            color: #00aaff;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+        .quick-link:hover {
+            background-color: #444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DarkVault Dashboard</h1>
+            <div class="nav-links">
+                <a href="/user/<%= user.id %>">My Profile</a>
+                <a href="/settings">Settings</a>
+                <a href="/products">Products</a>
+                <a href="/contact">Contact</a>
+                <a href="/ping">Network Tools</a>
+                <% if (user.isAdmin) { %>
+                    <a href="/admin">Admin Panel</a>
+                    <a href="/admin/logs">System Logs</a>
+                <% } %>
+                <a href="/logout">Logout</a>
+            </div>
+        </header>
+        
+        <div class="dashboard-grid">
+            <div class="main-content">
+                <div class="card">
+                    <h2>Message Board</h2>
+                    <div class="message-form">
+                        <form action="/message" method="POST">
+                            <textarea name="message" placeholder="Write your message here..." required></textarea>
+                            <button type="submit">Post Message</button>
+                        </form>
+                    </div>
+                    
+                    <div class="message-list">
+                        <h3>Recent Messages</h3>
+                        <% if (messages && messages.length > 0) { %>
+                            <% messages.forEach(function(msg) { %>
+                                <div class="message">
+                                    <div class="message-author">User #<%= msg.user_id %></div>
+                                    <!-- XSS vulnerability: directly outputs user input without sanitization -->
+                                    <div class="message-content"><%- msg.message %></div>
+                                    <div class="message-time"><small><%= msg.created_at %></small></div>
+                                </div>
+                            <% }); %>
+                        <% } else { %>
+                            <p>No messages yet. Be the first to post!</p>
+                        <% } %>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Quick Access</h2>
+                    <p>Access the application's features quickly:</p>
+                    
+                    <div class="quick-links">
+                        <a href="/products" class="quick-link">Search Products</a>
+                        <a href="/settings" class="quick-link">User Settings</a>
+                        <a href="/contact" class="quick-link">Contact Support</a>
+                        <a href="/ping" class="quick-link">Network Tools</a>
+                        <a href="/user/<%= user.id %>" class="quick-link">My Profile</a>
+                        <% if (user.isAdmin) { %>
+                            <a href="/admin" class="quick-link">Admin Panel</a>
+                            <a href="/admin/logs" class="quick-link">System Logs</a>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="card">
+                    <h2>Upload File</h2>
+                    <form action="/upload" method="POST">
+                        <div class="form-group">
+                            <label for="filename">Filename</label>
+                            <input type="text" id="filename" name="filename" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="fileContent">File Content</label>
+                            <textarea id="fileContent" name="fileContent" rows="6"></textarea>
+                        </div>
+                        <button type="submit">Upload</button>
+                    </form>
+                </div>
+                
+                <div class="card">
+                    <h2>User Info</h2>
+                    <p><strong>Username:</strong> <%= user.username %></p>
+                    <p><strong>Email:</strong> <%= user.email %></p>
+                    <p><strong>User ID:</strong> <%= user.id %></p>
+                    <p><strong>Role:</strong> <%= user.isAdmin ? 'Administrator' : 'Regular User' %></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

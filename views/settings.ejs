@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DarkVault - User Settings</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #444;
+        }
+        h1, h2, h3 {
+            color: #00aaff;
+        }
+        .nav-links a {
+            color: #00aaff;
+            text-decoration: none;
+            margin-left: 15px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .card {
+            background-color: #2a2a2a;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        form {
+            margin-top: 15px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"], input[type="number"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 3px;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #00aaff;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0088cc;
+        }
+        .success-message {
+            background-color: rgba(0, 255, 0, 0.1);
+            border: 1px solid #00aa00;
+            color: #00ff00;
+            padding: 10px;
+            border-radius: 3px;
+            margin-bottom: 20px;
+        }
+        .saved-filters {
+            margin-top: 20px;
+        }
+        .filter-item {
+            background-color: #333;
+            padding: 10px;
+            border-radius: 3px;
+            margin-bottom: 10px;
+        }
+        .filter-name {
+            font-weight: bold;
+            color: #00aaff;
+        }
+        .filter-details {
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+        .filter-actions {
+            margin-top: 10px;
+        }
+        .filter-actions a {
+            background-color: #00aaff;
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        .filter-actions a:hover {
+            background-color: #0088cc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>User Settings</h1>
+            <div class="nav-links">
+                <a href="/dashboard">Dashboard</a>
+                <a href="/products">Products</a>
+                <a href="/contact">Contact</a>
+                <% if (user.isAdmin) { %>
+                    <a href="/admin">Admin Panel</a>
+                <% } %>
+                <a href="/logout">Logout</a>
+            </div>
+        </header>
+        
+        <% if (message) { %>
+            <div class="success-message">
+                <p><%= message %></p>
+            </div>
+        <% } %>
+        
+        <div class="settings-grid">
+            <div class="card">
+                <h2>Profile Settings</h2>
+                <form action="/settings/save" method="POST">
+                    <div class="form-group">
+                        <label for="display_name">Display Name:</label>
+                        <input type="text" id="display_name" name="display_name" value="<%= preferences.display_name || user.username %>" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="avatar">Avatar URL:</label>
+                        <input type="text" id="avatar" name="avatar" value="<%= preferences.avatar || '' %>" placeholder="https://example.com/avatar.jpg">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="bio">Bio:</label>
+                        <textarea id="bio" name="bio" placeholder="Tell us about yourself..."><%= preferences.bio || '' %></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="theme">Theme:</label>
+                        <select id="theme" name="theme">
+                            <option value="dark" <%= (preferences.theme === 'dark' || !preferences.theme) ? 'selected' : '' %>>Dark</option>
+                            <option value="light" <%= preferences.theme === 'light' ? 'selected' : '' %>>Light</option>
+                            <option value="blue" <%= preferences.theme === 'blue' ? 'selected' : '' %>>Blue</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="favorite_category">Favorite Product Category:</label>
+                        <input type="text" id="favorite_category" name="favorite_category" value="<%= preferences.favorite_category || '' %>" placeholder="Electronics, Audio, etc.">
+                    </div>
+                    
+                    <button type="submit">Save Settings</button>
+                </form>
+            </div>
+            
+            <div class="card">
+                <h2>Saved Product Filters</h2>
+                
+                <!-- Form to create new product filter -->
+                <h3>Create New Filter</h3>
+                <form action="/settings/filter" method="POST">
+                    <div class="form-group">
+                        <label for="filter_name">Filter Name:</label>
+                        <input type="text" id="filter_name" name="filter_name" required placeholder="My favorite products">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="category">Category:</label>
+                        <input type="text" id="category" name="category" placeholder="Electronics, Audio, etc.">
+                        <small style="color: #aaa; display: block; margin-top: 3px;">Enter a category to filter by, e.g. 'Electronics'</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="min_price">Minimum Price:</label>
+                        <input type="number" id="min_price" name="min_price" min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="max_price">Maximum Price:</label>
+                        <input type="number" id="max_price" name="max_price" min="0" step="0.01" placeholder="1000.00">
+                    </div>
+                    
+                    <button type="submit">Save Filter</button>
+                </form>
+                
+                <!-- Display saved filters -->
+                <div class="saved-filters">
+                    <h3>Your Saved Filters</h3>
+                    
+                    <% if (filters && filters.length > 0) { %>
+                        <% filters.forEach(function(filter) { %>
+                            <% const filterData = JSON.parse(filter.filter_query); %>
+                            <div class="filter-item">
+                                <div class="filter-name"><%= filter.filter_name %></div>
+                                <div class="filter-details">
+                                    <% if (filterData.category) { %>
+                                        <div>Category: <%= filterData.category %></div>
+                                    <% } %>
+                                    <% if (filterData.min_price) { %>
+                                        <div>Min Price: $<%= filterData.min_price %></div>
+                                    <% } %>
+                                    <% if (filterData.max_price) { %>
+                                        <div>Max Price: $<%= filterData.max_price %></div>
+                                    <% } %>
+                                </div>
+                                <div class="filter-actions">
+                                    <a href="/products/filter/<%= filter.id %>">Apply Filter</a>
+                                </div>
+                            </div>
+                        <% }); %>
+                    <% } else { %>
+                        <p>You don't have any saved filters yet.</p>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

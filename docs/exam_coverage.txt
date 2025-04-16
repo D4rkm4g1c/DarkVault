@@ -1,0 +1,148 @@
+=================================================
+DARKVAULT EXAM COVERAGE GUIDE
+=================================================
+
+This document maps DarkVault features to your exam syllabus requirements.
+
+LO2.4 – Web application software and components
+-----------------------------------------------
+- Express.js framework (app.js)
+- EJS templating engine (views/*.ejs)
+- SQLite database (darkvault.db)
+- JWT authentication (/api/auth endpoint)
+- XML processing (import functionality)
+- Serialization utilities (export/import data)
+
+LO3.1/3.2 – Enumeration & Site Enumeration
+------------------------------------------
+- Discoverable endpoints across multiple views
+- Exposed API endpoints without proper documentation
+- Directory structure leakage in document.ejs
+- Visible admin functionality in UI
+- Hidden endpoints referenced in comments/links
+
+LO4.1-LO4.3 – Reconnaissance, Threat Modeling, Information Gathering
+-------------------------------------------------------------------
+- Information disclosure via error messages
+- Accessible configuration data via LFI
+- User enumeration in login error messages
+- Exposed technical details in HTTP headers
+- Developer comments containing sensitive information
+
+LO4.4-LO4.5 – Authentication & Authorization
+-------------------------------------------
+- SQL injection in login form (app.js:79-96)
+- Weak password hashing (MD5)
+- JWT token vulnerabilities (weak secret)
+- Missing access controls on admin panel
+- IDOR vulnerability in user profiles
+
+LO4.6 – Input Validation
+-----------------------
+- XSS in message board (app.js:126-137)
+- Command injection in ping functionality (app.js:193-202)
+- SQL injection in product search (app.js:204-247)
+- XXE in XML import feature (app.js:483-534)
+- Unrestricted file upload
+
+LO4.7 – Information Disclosure
+-----------------------------
+- Path disclosure in error messages
+- Source code exposure via LFI (app.js:603-627)
+- User data leakage via IDOR
+- Verbose error messages revealing implementation details
+- Configuration details exposed in document viewer
+
+LO4.8 – Cross-Site Scripting
+---------------------------
+- Stored XSS in message board
+- Reflected XSS in search parameters
+- DOM-based XSS in client-side scripts
+- Blind XSS in admin logs (app.js:248-277)
+
+LO4.9 – Injection Attacks
+------------------------
+- SQL injection (login, product search)
+- Command injection (ping tool)
+- SSTI in email templates (app.js:558-581)
+- XXE injection (product import)
+- Second-order SQL injection in filters (app.js:350-409)
+
+LO4.10 – Session Handling
+------------------------
+- Insecure session configuration (app.js:26-30)
+- Missing secure flag on cookies
+- No CSRF protection
+- Predictable session IDs
+- No session timeout
+
+LO4.11 – Encryption and Encoding
+-------------------------------
+- Weak password hashing (MD5)
+- Lack of TLS/HTTPS implementation
+- Weak JWT secret (app.js:535-556)
+- Unencrypted sensitive data storage
+- Base64 encoding mistaken for encryption in data export
+
+LO4.12 – Source Code Review
+--------------------------
+- Exposed source code via LFI vulnerability
+- Commented credentials in source
+- Debugging code left in production
+- Hardcoded secrets (JWT_SECRET)
+
+LO4.13 – Parameter Manipulation
+-----------------------------
+- Query parameter tampering in file access
+- Cookie manipulation for session hijacking
+- HTTP header injection
+- Hidden field manipulation in forms
+
+LO4.14 – Logging and Monitoring
+------------------------------
+- Insufficient logging of security events
+- Logs accessible via LFI vulnerability
+- No alerting for suspicious activities
+- Log injection vulnerabilities
+
+LO4.15 – Web API Attacks
+----------------------
+- Insecure JWT implementation (app.js:535-556)
+- No rate limiting on API endpoints
+- Missing input validation on API parameters
+- Broken object level authorization
+
+LO5.16 – Modern Database Technologies Attacks
+-------------------------------------------
+- SQL injection vulnerabilities
+- Excessive database privileges for application user
+- Unescaped user input in database queries
+- Exposed database error messages
+
+LO5.17 – Third Party Libraries and Attacks
+----------------------------------------
+- Outdated dependencies (package.json)
+- Vulnerable xml2js implementation (XXE)
+- Insecure node-serialize package (RCE)
+- Known vulnerabilities in Express and other libraries
+
+LO5.18 – Web Application Race Conditions
+--------------------------------------
+- Lack of proper synchronization in file operations
+- Missing transaction handling in database operations
+- TOCTOU vulnerabilities in access control checks
+- Concurrent processing issues
+
+LO5.1-LO5.3 – Privilege Escalation
+---------------------------------
+- Vertical privilege escalation via parameter tampering
+- Horizontal privilege escalation via IDOR
+- Privilege escalation via JWT manipulation
+- Admin access through broken access controls
+
+LO6.1 – Site Component Topology
+-----------------------------
+- Discoverable application structure
+- Interconnected components with security dependencies
+- Multiple entry points and attack surfaces
+- Complex interactions between components 

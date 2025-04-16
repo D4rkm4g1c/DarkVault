@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DarkVault - Admin Logs</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #444;
+        }
+        h1, h2 {
+            color: #00aaff;
+        }
+        .nav-links a {
+            color: #00aaff;
+            text-decoration: none;
+            margin-left: 15px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        .logs-card {
+            background-color: #2a2a2a;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+        th {
+            background-color: #333;
+        }
+        tr:hover {
+            background-color: #333;
+        }
+        .log-details {
+            background-color: #333;
+            border: 1px solid #444;
+            border-radius: 3px;
+            padding: 15px;
+            margin-top: 20px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .timestamp {
+            color: #aaa;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>System Logs</h1>
+            <div class="nav-links">
+                <a href="/dashboard">Dashboard</a>
+                <a href="/admin">Admin Panel</a>
+                <a href="/logout">Logout</a>
+            </div>
+        </header>
+        
+        <div class="logs-card">
+            <h2>User Activity Logs</h2>
+            <p>Review recent user activities and system events.</p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>User</th>
+                        <th>Action</th>
+                        <th>IP Address</th>
+                        <th>Date/Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (logs && logs.length > 0) { %>
+                        <% logs.forEach(function(log) { %>
+                            <tr>
+                                <td><%= log.id %></td>
+                                <td><%= log.username %></td>
+                                <!-- Blind XSS vulnerability: Unsafely renders action that contains user input -->
+                                <td><%- log.action %></td>
+                                <td><%= log.ip_address %></td>
+                                <td><span class="timestamp"><%= log.created_at %></span></td>
+                            </tr>
+                        <% }); %>
+                    <% } else { %>
+                        <tr>
+                            <td colspan="5">No logs found</td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="logs-card">
+            <h2>System Information</h2>
+            
+            <div>
+                <p><strong>Browser Details:</strong></p>
+                <!-- Blind XSS vulnerability: Displays user agent which can be spoofed -->
+                <div class="log-details">
+                    <% if (logs && logs.length > 0) { %>
+                        <% logs.slice(0, 5).forEach(function(log) { %>
+                            <div>
+                                <strong>User Agent:</strong> <%- log.user_agent %>
+                            </div>
+                        <% }); %>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

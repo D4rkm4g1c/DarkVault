@@ -1,0 +1,38 @@
+=====================================
+DARKVAULT API DOCUMENTATION
+=====================================
+
+BASE URL: /api/v1
+
+AUTHENTICATION
+-------------
+All API requests require an authentication token in the header:
+Authorization: Bearer <your_token>
+
+ENDPOINTS
+---------
+
+1. USER MANAGEMENT
+   GET /api/v1/users         - List all users
+   GET /api/v1/users/:id     - Get user details
+   POST /api/v1/users        - Create new user
+   PUT /api/v1/users/:id     - Update user
+   DELETE /api/v1/users/:id  - Delete user
+
+2. PRODUCT MANAGEMENT
+   GET /api/v1/products      - List all products
+   GET /api/v1/products/:id  - Get product details
+   POST /api/v1/products     - Create new product
+   PUT /api/v1/products/:id  - Update product
+   DELETE /api/v1/products/:id - Delete product
+
+3. SETTINGS
+   GET /api/v1/settings      - Get user settings
+   PUT /api/v1/settings      - Update user settings
+
+4. EXPORT/IMPORT
+   GET /api/v1/export        - Export user data
+   POST /api/v1/import       - Import user data
+
+NOTE: This API contains intentional vulnerabilities for educational purposes.
+Use at your own risk in a controlled environment. 
