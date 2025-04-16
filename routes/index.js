@@ -158,7 +158,7 @@ router.get('/dashboard', (req, res) => {
   });
 });
 
-// User profile page - vulnerable to IDOR
+// User profile page - view an individual user
 router.get('/user/:id', (req, res) => {
   // Check if user is logged in
   if (!req.session.user) {
@@ -168,20 +168,38 @@ router.get('/user/:id', (req, res) => {
   
   const userId = req.params.id;
   
-  // No authorization check for viewing profiles (IDOR vulnerability)
-  db.get('SELECT id, username, email, profile_pic, bio, role, isAdmin FROM users WHERE id = ?', [userId], (err, user) => {
-    if (err || !user) {
-      req.flash('error', 'User not found');
+  // First get the user data
+  db.get("SELECT id, username, email, role, isAdmin FROM users WHERE id = ?", [userId], (err, user) => {
+    if (err) {
+      console.error('Error fetching user:', err);
+      req.flash('error', 'Failed to load user');
       return res.redirect('/users');
     }
     
-    // Get user's messages
-    db.all('SELECT * FROM messages WHERE user_id = ? ORDER BY created_at DESC', [userId], (err, messages) => {
-      res.render('profile', {
-        title: `${user.username}'s Profile - DarkVault`,
-        profileUser: user,
-        messages: messages || [],
-        user: req.session.user
+    if (!user) {
+      req.flash('error', 'User not found');
+      return res.redirect('/users');
+    }
+
+    // Then get user preferences
+    db.get("SELECT * FROM user_preferences WHERE user_id = ?", [userId], (err, preferences) => {
+      // Get user's messages
+      db.all('SELECT * FROM messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', [userId], (err, messages) => {
+        // Format the profile data to match the expected format in the template
+        const profile = {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          isAdmin: user.isAdmin === 1 || user.role === 'admin',
+          preferences: preferences || {}
+        };
+        
+        res.render('profile', { 
+          title: `${user.username}'s Profile - DarkVault`,
+          user: req.session.user,
+          profile: profile,
+          messages: messages || []
+        });
       });
     });
   });
