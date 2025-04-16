@@ -1,0 +1,157 @@
+<%- include('partials/header') %>
+
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-12">
+      <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+          <h4>Client-Side Rendering Vulnerabilities</h4>
+        </div>
+        <div class="card-body">
+          <p class="alert alert-danger">
+            This page demonstrates vulnerabilities in modern web frameworks that use client-side rendering. 
+            It includes DOM-based XSS, client-side template injection, and other modern framework issues.
+          </p>
+
+          <!-- DOM-based XSS Demonstration -->
+          <h5>DOM-based XSS Vulnerability</h5>
+          <div class="input-group mb-3">
+            <input type="text" id="messageInput" class="form-control" placeholder="Enter message" value="<%= message %>">
+            <div class="input-group-append">
+              <button class="btn btn-primary" type="button" id="renderMessage">Render Message</button>
+            </div>
+          </div>
+          <div class="card mb-4">
+            <div class="card-header">Message Output (vulnerable to DOM XSS)</div>
+            <div class="card-body">
+              <div id="messageOutput"></div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <p><strong>Try this XSS payload:</strong> <code>&lt;img src=x onerror="alert('DOM XSS')"&gt;</code></p>
+          </div>
+
+          <!-- Template Injection Demonstration -->
+          <h5>Template Injection in Modern Frameworks</h5>
+          <div class="form-group">
+            <label for="templateInput">Template (vulnerable to template injection):</label>
+            <textarea id="templateInput" class="form-control" rows="3"><%= template %></textarea>
+          </div>
+          <div class="form-group">
+            <label for="dataInput">Data (JSON format):</label>
+            <textarea id="dataInput" class="form-control" rows="3">{"name":"John","role":"admin","secret":"S3cr3tV4lu3!"}</textarea>
+          </div>
+          <button class="btn btn-primary mb-3" id="renderTemplate">Render Template</button>
+          <div class="card mb-4">
+            <div class="card-header">Template Output</div>
+            <div class="card-body">
+              <div id="templateOutput"></div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <p><strong>Try this template injection payload:</strong> <code>${process.mainModule.require('child_process').execSync('id')}</code></p>
+          </div>
+
+          <!-- Insecure Deserialization Demonstration -->
+          <h5>Insecure Deserialization with JSON</h5>
+          <div class="form-group">
+            <label for="jsonInput">JSON Data (vulnerable to prototype pollution):</label>
+            <textarea id="jsonInput" class="form-control" rows="4">{"user":{"name":"test","isAdmin":false}}</textarea>
+          </div>
+          <button class="btn btn-primary mb-3" id="deserializeJson">Process JSON</button>
+          <div class="card">
+            <div class="card-header">Deserialization Result</div>
+            <div class="card-body">
+              <div id="deserializeOutput"></div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <p><strong>Try this prototype pollution payload:</strong> <code>{"__proto__":{"isAdmin":true},"user":{"name":"hacker"}}</code></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // VULNERABLE: Direct DOM manipulation without sanitization
+  document.getElementById('renderMessage').addEventListener('click', function() {
+    const message = document.getElementById('messageInput').value;
+    // DOM-based XSS vulnerability: directly inserting input into innerHTML
+    document.getElementById('messageOutput').innerHTML = message;
+  });
+
+  // Auto-render message from URL parameter (DOM-based XSS)
+  window.addEventListener('DOMContentLoaded', function() {
+    const message = document.getElementById('messageInput').value;
+    if (message) {
+      // DOM-based XSS vulnerability
+      document.getElementById('messageOutput').innerHTML = message;
+    }
+  });
+
+  // Template rendering with potential template injection
+  document.getElementById('renderTemplate').addEventListener('click', function() {
+    const template = document.getElementById('templateInput').value;
+    const data = document.getElementById('dataInput').value;
+
+    fetch('/render-template', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ template, data })
+    })
+    .then(response => response.json())
+    .then(result => {
+      if (result.error) {
+        document.getElementById('templateOutput').innerHTML = 
+          '<div class="alert alert-danger">' + result.error + ': ' + result.message + '</div>';
+      } else {
+        // Insecure rendering of template output
+        document.getElementById('templateOutput').innerHTML = result.rendered;
+      }
+    })
+    .catch(error => {
+      document.getElementById('templateOutput').innerHTML = 
+        '<div class="alert alert-danger">Error: ' + error.message + '</div>';
+    });
+  });
+
+  // Insecure JSON deserialization with prototype pollution vulnerability
+  document.getElementById('deserializeJson').addEventListener('click', function() {
+    const jsonData = document.getElementById('jsonInput').value;
+    
+    try {
+      // VULNERABLE: Using JSON.parse without validation
+      const parsedData = JSON.parse(jsonData);
+      
+      // Create a new object using the parsed data (vulnerable to prototype pollution)
+      const user = {};
+      
+      // Merge properties (vulnerable)
+      Object.assign(user, parsedData.user || {});
+      
+      // Display result
+      document.getElementById('deserializeOutput').innerHTML = 
+        '<pre>' + JSON.stringify(user, null, 2) + '</pre>' +
+        '<p>isAdmin check result: <strong>' + (user.isAdmin ? 'TRUE (compromised!)' : 'false (expected)') + '</strong></p>';
+        
+      // Check for global prototype pollution
+      if (Object.prototype.isAdmin === true) {
+        document.getElementById('deserializeOutput').innerHTML +=
+          '<div class="alert alert-danger">ALERT: Global prototype has been polluted! ' +
+          'Every object now has isAdmin=true. Object.prototype.isAdmin = ' + Object.prototype.isAdmin + '</div>';
+          
+        // Reset the pollution for demo purposes
+        delete Object.prototype.isAdmin;
+      }
+    } catch (e) {
+      document.getElementById('deserializeOutput').innerHTML = 
+        '<div class="alert alert-danger">Invalid JSON: ' + e.message + '</div>';
+    }
+  });
+</script>
+
+<%- include('partials/footer') %> 

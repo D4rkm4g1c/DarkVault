@@ -27,111 +27,51 @@
             <div class="col-md-12">
                 <div class="card">
                     <div class="card-header bg-primary text-white">
-                        <h4 class="mb-0">Vulnerability Dashboard</h4>
+                        <h4 class="mb-0">CTL APP Exam Preparation Dashboard</h4>
                     </div>
                     <div class="card-body">
-                        <p class="lead">Explore the following vulnerable components to practice web application security testing.</p>
+                        <p class="lead">This dashboard organizes vulnerabilities according to the CTL APP exam syllabus for targeted practice.</p>
                         <a href="/flags" class="btn btn-success">
                             <i class="bi bi-flag"></i> View Flag Progress
+                        </a>
+                        <a href="/site-map" class="btn btn-info ms-2">
+                            <i class="bi bi-diagram-3"></i> Site Component Topology
                         </a>
                     </div>
                 </div>
             </div>
         </div>
 
-        <h3 class="mb-3">Vulnerability Categories</h3>
+        <h3 class="mb-3">OWASP Top 10 Vulnerabilities</h3>
         
         <div class="row">
-            <!-- Authentication & Authorization -->
+            <!-- Broken Access Control -->
             <div class="col-md-4 mb-4">
                 <div class="card dashboard-card h-100">
                     <div class="card-header bg-danger text-white">
-                        <h5 class="mb-0">Authentication & Authorization</h5>
+                        <h5 class="mb-0">A01: Broken Access Control</h5>
                     </div>
                     <div class="card-body">
                         <ul class="list-group list-group-flush">
-                            <li class="list-group-item">
-                                <a href="/login" class="text-decoration-none">SQL Injection in Login</a>
-                            </li>
-                            <li class="list-group-item">
-                                <a href="/api/admin/dashboard" class="text-decoration-none">JWT Manipulation</a>
-                            </li>
                             <li class="list-group-item">
                                 <a href="/user/9999" class="text-decoration-none">IDOR Vulnerability</a>
                             </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Injection Attacks -->
-            <div class="col-md-4 mb-4">
-                <div class="card dashboard-card h-100">
-                    <div class="card-header bg-warning text-dark">
-                        <h5 class="mb-0">Injection Attacks</h5>
-                    </div>
-                    <div class="card-body">
-                        <ul class="list-group list-group-flush">
                             <li class="list-group-item">
-                                <a href="/api/ping" class="text-decoration-none">Command Injection</a>
+                                <a href="/todos/1" class="text-decoration-none">Broken Function Level Auth</a>
                             </li>
                             <li class="list-group-item">
-                                <a href="/api/import-xml" class="text-decoration-none">XML External Entity (XXE)</a>
-                            </li>
-                            <li class="list-group-item">
-                                <a href="/api/search-users" class="text-decoration-none">NoSQL Injection</a>
+                                <a href="/api/admin/users" class="text-decoration-none">Missing Access Control</a>
                             </li>
                         </ul>
                     </div>
                 </div>
             </div>
 
-            <!-- Cross-Site Scripting -->
+            <!-- Cryptographic Failures -->
             <div class="col-md-4 mb-4">
                 <div class="card dashboard-card h-100">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">Cross-Site Scripting</h5>
-                    </div>
-                    <div class="card-body">
-                        <ul class="list-group list-group-flush">
-                            <li class="list-group-item">
-                                <a href="/messages" class="text-decoration-none">Stored XSS</a>
-                            </li>
-                            <li class="list-group-item">
-                                <a href="/api/render-template" class="text-decoration-none">Server-Side Template Injection</a>
-                            </li>
-                            <li class="list-group-item">
-                                <a href="/api/update-email" class="text-decoration-none">CSRF Vulnerability</a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Path Traversal -->
-            <div class="col-md-4 mb-4">
-                <div class="card dashboard-card h-100">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">File Operations</h5>
-                    </div>
-                    <div class="card-body">
-                        <ul class="list-group list-group-flush">
-                            <li class="list-group-item">
-                                <a href="/api/file?name=sample.txt" class="text-decoration-none">Path Traversal</a>
-                            </li>
-                            <li class="list-group-item">
-                                <a href="/api/upload" class="text-decoration-none">Insecure File Upload</a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Encryption & Encoding -->
-            <div class="col-md-4 mb-4">
-                <div class="card dashboard-card h-100">
-                    <div class="card-header bg-dark text-white">
-                        <h5 class="mb-0">Encryption & Encoding</h5>
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0">A02: Cryptographic Failures</h5>
                     </div>
                     <div class="card-body">
                         <ul class="list-group list-group-flush">
@@ -139,29 +79,222 @@
                                 <a href="/api/encrypt-data" class="text-decoration-none">Weak Encryption</a>
                             </li>
                             <li class="list-group-item">
-                                <a href="/register" class="text-decoration-none">Weak Password Hashing (MD5)</a>
+                                <a href="/register" class="text-decoration-none">Weak Password Hashing</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/config" class="text-decoration-none">Sensitive Data Exposure</a>
                             </li>
                         </ul>
                     </div>
                 </div>
             </div>
 
-            <!-- Other Vulnerabilities -->
+            <!-- Injection -->
             <div class="col-md-4 mb-4">
                 <div class="card dashboard-card h-100">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">Other Vulnerabilities</h5>
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0">A03: Injection</h5>
                     </div>
                     <div class="card-body">
                         <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <a href="/login" class="text-decoration-none">SQL Injection</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/search-users" class="text-decoration-none">NoSQL Injection</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/ping" class="text-decoration-none">Command Injection</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- XSS and Others from OWASP Top 10 -->
+            <div class="col-md-4 mb-4">
+                <div class="card dashboard-card h-100">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">A07: XSS & A04: Insecure Design</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <a href="/messages" class="text-decoration-none">Stored XSS</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/search" class="text-decoration-none">Reflected XSS</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/client-side" class="text-decoration-none">DOM-based XSS</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security Misconfiguration -->
+            <div class="col-md-4 mb-4">
+                <div class="card dashboard-card h-100">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">A05: Security Misconfiguration</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <a href="/api/debug" class="text-decoration-none">Debug Endpoints Enabled</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/headers" class="text-decoration-none">Missing Security Headers</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/default-creds" class="text-decoration-none">Default Credentials</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Identification and Authentication -->
+            <div class="col-md-4 mb-4">
+                <div class="card dashboard-card h-100">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">A07: Authentication Failures</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <a href="/forgot-password" class="text-decoration-none">Weak Password Recovery</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/token-leak" class="text-decoration-none">Token Leakage</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/session-fixation" class="text-decoration-none">Session Fixation</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h3 class="mb-3">API and Modern Web Vulnerabilities</h3>
+
+        <div class="row">
+            <!-- API Vulnerabilities -->
+            <div class="col-md-4 mb-4">
+                <div class="card dashboard-card h-100">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">API Security</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <a href="/api/graphql" class="text-decoration-none">GraphQL Introspection</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/rate-limit" class="text-decoration-none">Rate Limiting Bypass</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/mass-assignment" class="text-decoration-none">Mass Assignment</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modern Framework Vulnerabilities -->
+            <div class="col-md-4 mb-4">
+                <div class="card dashboard-card h-100">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">Modern Frameworks</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <a href="/api/render-template" class="text-decoration-none">Server-Side Template Injection</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/deserialize" class="text-decoration-none">Insecure Deserialization</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/import-xml" class="text-decoration-none">XML External Entity (XXE)</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Third-Party and Race Conditions -->
+            <div class="col-md-4 mb-4">
+                <div class="card dashboard-card h-100">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">Third-Party & Race Conditions</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <a href="/api/vulnerable-dependencies" class="text-decoration-none">Vulnerable Dependencies</a>
+                            </li>
                             <li class="list-group-item">
                                 <a href="/api/update-balance" class="text-decoration-none">Race Condition</a>
                             </li>
                             <li class="list-group-item">
                                 <a href="/api/merge-config" class="text-decoration-none">Prototype Pollution</a>
                             </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h3 class="mb-3">Enumeration and Analysis</h3>
+
+        <div class="row">
+            <!-- Enumeration -->
+            <div class="col-md-6 mb-4">
+                <div class="card dashboard-card h-100">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0">Site Enumeration & Topology</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
                             <li class="list-group-item">
-                                <a href="/api/graphql" class="text-decoration-none">GraphQL Introspection</a>
+                                <a href="/robots.txt" class="text-decoration-none">Robots.txt Analysis</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/docs" class="text-decoration-none">API Documentation Review</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/version-info" class="text-decoration-none">Version Disclosure</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/directory-listing" class="text-decoration-none">Directory Listing Enabled</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Review and Analysis -->
+            <div class="col-md-6 mb-4">
+                <div class="card dashboard-card h-100">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0">Code Review & Monitoring</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <a href="/code-review" class="text-decoration-none">Vulnerable Code Samples</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/logs" class="text-decoration-none">Insecure Logging</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/error" class="text-decoration-none">Error Handling Issues</a>
+                            </li>
+                            <li class="list-group-item">
+                                <a href="/api/swagger" class="text-decoration-none">API Documentation Review</a>
                             </li>
                         </ul>
                     </div>

@@ -605,101 +605,94 @@ router.post('/search/advanced', checkJwt, (req, res) => {
   }
 });
 
-// GraphQL-like vulnerable endpoint
-router.post('/graphql', (req, res) => {
+// GraphQL mock endpoint with broken object level authorization
+router.post('/graphql', checkJwt, (req, res) => {
   const { query } = req.body;
   
-  if (!query) {
-    return res.status(400).json({ error: 'Query is required' });
-  }
+  // No rate limiting implemented intentionally
   
-  try {
-    // Vulnerable implementation - directly evaluates user input
-    // This simulates GraphQL introspection and injection vulnerabilities
-    let result = {};
-    
-    // Simulate GraphQL processing with vulnerable eval
-    if (query.includes('IntrospectionQuery') || query.includes('__schema')) {
-      // Flag for successful introspection attack
-      const flag = "DARK{gr4phql_1ntr0sp3ct10n}";
-      
-      // Information disclosure through introspection
-      result = {
+  // Example GraphQL query processing
+  if (query.includes('__schema')) {
+    // Allow introspection (security issue)
+    return res.json({
+      data: {
         __schema: {
           types: [
-            { name: 'User', fields: [
-              { name: 'id', type: 'ID' },
-              { name: 'username', type: 'String' },
-              { name: 'email', type: 'String' },
-              { name: 'password', type: 'String' }, // Sensitive field exposed
-              { name: 'isAdmin', type: 'Boolean' },
-              { name: 'secretFlag', type: 'String', description: flag }
-            ]},
-            { name: 'Product', fields: [
-              { name: 'id', type: 'ID' },
-              { name: 'name', type: 'String' },
-              { name: 'description', type: 'String' },
-              { name: 'price', type: 'Float' },
-              { name: 'category', type: 'String' }
-            ]}
+            { 
+              name: 'User',
+              fields: [
+                { name: 'id', type: 'ID' },
+                { name: 'username', type: 'String' },
+                { name: 'email', type: 'String' },
+                { name: 'password', type: 'String' }, // Exposing sensitive field
+                { name: 'creditCardNumber', type: 'String' }, // Exposing sensitive field
+                { name: 'apiKey', type: 'String' } // Exposing sensitive field
+              ]
+            },
+            {
+              name: 'PrivateData',
+              fields: [
+                { name: 'id', type: 'ID' },
+                { name: 'userId', type: 'ID' },
+                { name: 'secretKey', type: 'String' },
+                { name: 'backupCodes', type: 'String' }
+              ]
+            }
           ]
         }
-      };
-    } else if (query.includes('allUsers')) {
-      // No authentication check for sensitive data
-      db.all("SELECT * FROM users", (err, users) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error', details: err.message });
-        }
-        result = { allUsers: users };
-        res.json({ data: result });
-      });
-      return; // Return early as we're handling the response in the callback
-    } else if (query.includes('user(')) {
-      // Extract ID using regex - vulnerable to injection
-      const idMatch = query.match(/user\(id:\s*["']?([^"'\s\)]+)["']?\)/);
-      const id = idMatch ? idMatch[1] : null;
-      
-      if (id) {
-        // Vulnerable to injection as we're not using parameterized queries
-        db.get(`SELECT * FROM users WHERE id = ${id}`, (err, user) => {
-          if (err) {
-            return res.status(500).json({ error: 'Database error', details: err.message });
-          }
-          result = { user: user || null };
-          res.json({ data: result });
-        });
-        return; // Return early
       }
-    } else if (query.includes('product(')) {
-      // Extract ID using regex - vulnerable to injection
-      const idMatch = query.match(/product\(id:\s*["']?([^"'\s\)]+)["']?\)/);
-      const id = idMatch ? idMatch[1] : null;
-      
-      if (id) {
-        // Vulnerable to injection
-        db.get(`SELECT * FROM products WHERE id = ${id}`, (err, product) => {
-          if (err) {
-            return res.status(500).json({ error: 'Database error', details: err.message });
-          }
-          result = { product: product || null };
-          res.json({ data: result });
-        });
-        return; // Return early
-      }
-    }
-    
-    // Default response
-    res.json({ data: result });
-    
-  } catch (err) {
-    // Verbose error messages - information disclosure
-    res.status(500).json({ 
-      error: 'GraphQL error', 
-      details: err.message,
-      stack: err.stack // Leaking stack trace - security vulnerability
     });
   }
+  
+  // BROKEN OBJECT LEVEL AUTHORIZATION
+  // Note: No check if the requesting user owns the data
+  if (query.includes('getUserData')) {
+    const userId = query.match(/getUserData\(\s*id:\s*"?(\d+)"?\s*\)/)?.[1];
+    
+    if (userId) {
+      // Missing verification if current user can access this user's data
+      db.get("SELECT * FROM users WHERE id = ?", [userId], (err, userData) => {
+        if (err || !userData) {
+          return res.json({ 
+            errors: [{ message: 'User not found' }]
+          });
+        }
+        
+        // Fetch sensitive data without proper authorization check
+        db.all("SELECT * FROM user_preferences WHERE user_id = ?", [userId], (err, prefs) => {
+          db.all("SELECT * FROM account_details WHERE user_id = ?", [userId], (err, accountDetails) => {
+            // Return all data including sensitive information
+            res.json({
+              data: {
+                user: {
+                  ...userData,
+                  preferences: prefs || [],
+                  accountDetails: accountDetails || []
+                }
+              }
+            });
+          });
+        });
+      });
+      return;
+    }
+  }
+  
+  // Default response
+  res.json({
+    errors: [{ message: 'Invalid GraphQL query' }]
+  });
+});
+
+// Endpoint demonstrating improper rate limiting
+router.get('/no-rate-limit', (req, res) => {
+  // This endpoint should have rate limiting but doesn't
+  res.json({
+    message: 'This endpoint has no rate limiting protection',
+    hint: 'Try sending many requests quickly to simulate a DoS attack',
+    flag: req.headers['x-request-count'] && parseInt(req.headers['x-request-count']) > 50 ? 
+      'DARK{r4t3_l1m1t_byp4ss3d}' : 'Keep trying, send more requests with X-Request-Count header'
+  });
 });
 
 // Vulnerable to race conditions - counter increment

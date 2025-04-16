@@ -308,6 +308,12 @@ router.get('/admin', (req, res) => {
 
 // Users list page
 router.get('/users', (req, res) => {
+  // Check if user is logged in
+  if (!req.session.user) {
+    req.flash('error', 'You must be logged in to view users');
+    return res.redirect('/login');
+  }
+  
   db.getAllUsers((err, users) => {
     if (err) {
       console.error('Error fetching users:', err);
@@ -329,6 +335,12 @@ router.get('/users', (req, res) => {
 
 // Files page
 router.get('/files', (req, res) => {
+  // Check if user is logged in
+  if (!req.session.user) {
+    req.flash('error', 'You must be logged in to view files');
+    return res.redirect('/login');
+  }
+  
   db.all("SELECT * FROM files", (err, files) => {
     if (err) {
       console.error('Error fetching files:', err);
@@ -345,6 +357,22 @@ router.get('/files', (req, res) => {
       user: req.session.user,
       files: files
     });
+  });
+});
+
+// Site Map & Component Topology
+router.get('/site-map', (req, res) => {
+  res.render('site-map', {
+    title: 'Site Component Topology - DarkVault',
+    user: req.session.user || null
+  });
+});
+
+// Code Review Examples
+router.get('/code-review', (req, res) => {
+  res.render('code-review', {
+    title: 'Code Review Examples - DarkVault',
+    user: req.session.user || null
   });
 });
 
@@ -483,6 +511,47 @@ router.get('/ping', (req, res) => {
       error: error ? error.message : null
     });
   });
+});
+
+// Client-side rendering vulnerabilities demonstration
+router.get('/client-render', (req, res) => {
+  res.render('client-render', {
+    title: 'Client-Side Rendering Vulnerabilities',
+    user: req.session.user || null,
+    message: req.query.message || '',
+    template: req.query.template || '',
+    renderMode: req.query.renderMode || 'safe'
+  });
+});
+
+// Add template injection example with popular frameworks
+router.post('/render-template', (req, res) => {
+  const { template, data } = req.body;
+  
+  // VULNERABLE: Direct template rendering without proper sanitization
+  try {
+    // Simulate template rendering with eval (extremely dangerous)
+    const compiledTemplate = new Function('data', `
+      with(data) {
+        return \`${template}\`;
+      }
+    `);
+    
+    // Execute template with user data
+    const result = compiledTemplate(JSON.parse(data || '{}'));
+    
+    res.json({
+      rendered: result,
+      message: 'Template rendered successfully'
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Template rendering error',
+      message: err.message,
+      // Leaking stack trace - security vulnerability
+      stack: err.stack
+    });
+  }
 });
 
 module.exports = router; 

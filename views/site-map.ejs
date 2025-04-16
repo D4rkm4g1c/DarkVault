@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Site Map - DarkVault</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css">
+    <style>
+        .site-map-container {
+            overflow-x: auto;
+        }
+        .tree {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .tree li {
+            margin: 0;
+            padding: 0 1em;
+            line-height: 2em;
+            position: relative;
+        }
+        .tree li::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            border-left: 1px solid #ccc;
+            height: 100%;
+            width: 1px;
+        }
+        .tree li:last-child::before {
+            height: 1em;
+        }
+        .tree li::after {
+            content: "";
+            position: absolute;
+            top: 1em;
+            left: 0;
+            border-top: 1px solid #ccc;
+            width: 1em;
+        }
+        .tree ul {
+            margin: 0;
+            padding: 0 0 0 1em;
+            list-style: none;
+        }
+        .component {
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-right: 5px;
+        }
+        .component-api {
+            background-color: #d1e7ff;
+        }
+        .component-web {
+            background-color: #d7f9d7;
+        }
+        .component-auth {
+            background-color: #ffe8cc;
+        }
+        .component-data {
+            background-color: #f5d8ff;
+        }
+        .component-vuln {
+            background-color: #ffcccc;
+        }
+        .component-file {
+            background-color: #e6e6e6;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/navbar') %>
+    <%- include('partials/header') %>
+
+    <div class="container mt-5">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2>Site Component Topology</h2>
+                <p class="lead">This map shows the structure and components of the DarkVault application.</p>
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> <strong>Exam Focus:</strong> Site component topology and enumeration are key requirements for the CTL APP exam.
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h4>Component Legend</h4>
+                    </div>
+                    <div class="card-body d-flex flex-wrap">
+                        <div class="me-3 mb-2">
+                            <span class="component component-web">Web Page</span>
+                        </div>
+                        <div class="me-3 mb-2">
+                            <span class="component component-api">API Endpoint</span>
+                        </div>
+                        <div class="me-3 mb-2">
+                            <span class="component component-auth">Authentication Component</span>
+                        </div>
+                        <div class="me-3 mb-2">
+                            <span class="component component-data">Data Storage</span>
+                        </div>
+                        <div class="me-3 mb-2">
+                            <span class="component component-vuln">Known Vulnerability</span>
+                        </div>
+                        <div class="me-3 mb-2">
+                            <span class="component component-file">Static Resource</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h4>DarkVault Application Map</h4>
+                    </div>
+                    <div class="card-body site-map-container">
+                        <ul class="tree">
+                            <li>
+                                <span class="component component-web">/ (Root)</span> Home Page
+                                <ul>
+                                    <li>
+                                        <span class="component component-auth">Authentication</span>
+                                        <ul>
+                                            <li>
+                                                <span class="component component-web">/login</span> Login Page
+                                                <span class="component component-vuln">SQL Injection</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/register</span> Registration
+                                                <span class="component component-vuln">Weak Password Hashing</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/forgot-password</span> Password Recovery
+                                                <span class="component component-vuln">Weak Recovery Mechanism</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/session-fixation</span> Demo Page
+                                                <span class="component component-vuln">Session Fixation</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-api">/api/token-leak</span> Token Endpoint
+                                                <span class="component component-vuln">Token Leakage</span>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <span class="component component-web">User Management</span>
+                                        <ul>
+                                            <li>
+                                                <span class="component component-web">/dashboard</span> User Dashboard
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/profile</span> User Profile
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/users</span> Users List
+                                                <span class="component component-vuln">Information Disclosure</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/user/:id</span> User Profile View
+                                                <span class="component component-vuln">IDOR</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-api">/api/users</span> Users API
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <span class="component component-web">Content Pages</span>
+                                        <ul>
+                                            <li>
+                                                <span class="component component-web">/messages</span> Message Board
+                                                <span class="component component-vuln">Stored XSS</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/search</span> Search Page
+                                                <span class="component component-vuln">Reflected XSS</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/client-side</span> Client-Side App
+                                                <span class="component component-vuln">DOM-based XSS</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/code-review</span> Code Samples
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <span class="component component-api">API Endpoints</span>
+                                        <ul>
+                                            <li>
+                                                <span class="component component-api">/api</span> API Root
+                                                <ul>
+                                                    <li>
+                                                        <span class="component component-api">/api/graphql</span> GraphQL API
+                                                        <span class="component component-vuln">Introspection</span>
+                                                    </li>
+                                                    <li>
+                                                        <span class="component component-api">/api/rate-limit</span> Rate-Limited API
+                                                        <span class="component component-vuln">Rate Limit Bypass</span>
+                                                    </li>
+                                                    <li>
+                                                        <span class="component component-api">/api/encrypt-data</span> Encryption API
+                                                        <span class="component component-vuln">Weak Encryption</span>
+                                                    </li>
+                                                    <li>
+                                                        <span class="component component-api">/api/file</span> File Access API
+                                                        <span class="component component-vuln">Path Traversal</span>
+                                                    </li>
+                                                    <li>
+                                                        <span class="component component-api">/api/upload</span> File Upload API
+                                                        <span class="component component-vuln">Unsafe Upload</span>
+                                                    </li>
+                                                    <li>
+                                                        <span class="component component-api">/api/render-template</span> Template API
+                                                        <span class="component component-vuln">SSTI</span>
+                                                    </li>
+                                                    <li>
+                                                        <span class="component component-api">/api/deserialize</span> Deserialization API
+                                                        <span class="component component-vuln">Insecure Deserialization</span>
+                                                    </li>
+                                                    <li>
+                                                        <span class="component component-api">/api/logs</span> Logging API
+                                                        <span class="component component-vuln">Insecure Logging</span>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                            <li>
+                                                <span class="component component-api">/api/admin</span> Admin API
+                                                <ul>
+                                                    <li>
+                                                        <span class="component component-api">/api/admin/dashboard</span> Admin Dashboard API
+                                                        <span class="component component-vuln">JWT Manipulation</span>
+                                                    </li>
+                                                    <li>
+                                                        <span class="component component-api">/api/admin/users</span> Admin Users API
+                                                        <span class="component component-vuln">Missing Access Control</span>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <span class="component component-web">System Tools</span>
+                                        <ul>
+                                            <li>
+                                                <span class="component component-web">/ping</span> Network Ping Tool
+                                                <span class="component component-vuln">Command Injection</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">/command</span> Command Console
+                                                <span class="component component-vuln">Command Injection</span>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <span class="component component-web">Attack Chains</span>
+                                        <ul>
+                                            <li>
+                                                <span class="component component-web">Path Traversal → JWT</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">XSS → CSRF</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-web">Command Injection → File Upload</span>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <span class="component component-data">Data Storage</span>
+                                        <ul>
+                                            <li>
+                                                <span class="component component-data">SQLite Database</span>
+                                                <span class="component component-vuln">SQL Injection</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-data">NoSQL Database</span>
+                                                <span class="component component-vuln">NoSQL Injection</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-data">File Storage</span>
+                                                <span class="component component-vuln">Path Traversal</span>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <span class="component component-file">Static Resources</span>
+                                        <ul>
+                                            <li>
+                                                <span class="component component-file">/robots.txt</span>
+                                                <span class="component component-vuln">Information Disclosure</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-file">/api/docs</span> API Documentation
+                                                <span class="component component-vuln">Information Disclosure</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-file">/version-info</span> Version Info
+                                                <span class="component component-vuln">Information Disclosure</span>
+                                            </li>
+                                            <li>
+                                                <span class="component component-file">/directory-listing</span>
+                                                <span class="component component-vuln">Information Disclosure</span>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h4>Enumeration Techniques</h4>
+                    </div>
+                    <div class="card-body">
+                        <p>Effective site enumeration is a critical skill for the exam. Practice these techniques:</p>
+                        
+                        <ul class="list-group mb-3">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Directory Enumeration
+                                <span class="badge bg-primary rounded-pill">High Value</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                API Endpoint Discovery
+                                <span class="badge bg-primary rounded-pill">High Value</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Parameter Analysis
+                                <span class="badge bg-primary rounded-pill">High Value</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Technology Fingerprinting
+                                <span class="badge bg-warning text-dark rounded-pill">Medium Value</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Robots.txt and Sitemap Analysis
+                                <span class="badge bg-warning text-dark rounded-pill">Medium Value</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Error Message Analysis
+                                <span class="badge bg-warning text-dark rounded-pill">Medium Value</span>
+                            </li>
+                        </ul>
+                        
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> <strong>Exam Tip:</strong> Site component topology and understanding the application structure is a significant topic on the exam.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <%- include('partials/footer') %>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 
