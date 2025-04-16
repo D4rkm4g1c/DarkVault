@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-    <%- include('partials/navbar') %>
+    <%- include('partials/header') %>
 
     <div class="container mt-5">
         <div class="row">
@@ -82,6 +82,39 @@
             </div>
         </div>
 
+        <% if (user) { %>
+        <div class="row mt-5">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">My Todo List</h5>
+                    </div>
+                    <div class="card-body">
+                        <form action="/todos" method="POST" class="mb-3">
+                            <div class="input-group">
+                                <input type="text" class="form-control" name="title" placeholder="Add a new todo..." required>
+                                <button class="btn btn-primary" type="submit">Add</button>
+                            </div>
+                        </form>
+
+                        <% if (todos && todos.length > 0) { %>
+                            <ul class="list-group">
+                                <% todos.forEach(todo => { %>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <%= todo.title %>
+                                        <a href="/todos/<%= todo.id %>/delete" class="btn btn-sm btn-danger">Delete</a>
+                                    </li>
+                                <% }); %>
+                            </ul>
+                        <% } else { %>
+                            <p class="text-muted">No todos yet. Add one above!</p>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <% } %>
+
         <div class="alert alert-warning mt-5" role="alert">
             <h4 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> Warning!</h4>
             <p>This application contains intentional security vulnerabilities. It is designed for educational purposes only.</p>
@@ -90,19 +123,7 @@
         </div>
     </div>
 
-    <footer class="bg-dark text-white mt-5 py-4">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <h5>DarkVault</h5>
-                    <p>A deliberately vulnerable web application for security training.</p>
-                </div>
-                <div class="col-md-6 text-md-end">
-                    <p><small>For educational purposes only. Created for web application security testing practice.</small></p>
-                </div>
-            </div>
-        </div>
-    </footer>
+    <%- include('partials/footer') %>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/js/scripts.js"></script>

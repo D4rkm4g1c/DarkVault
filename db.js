@@ -119,5 +119,65 @@ db.serialize(() => {
   });
 });
 
+// Helper database functions
+
+// Find user by credentials - vulnerable to SQL injection
+db.findUserByCredentials = function(username, password, callback) {
+  // VULNERABLE: Direct string interpolation leading to SQL injection
+  const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
+  this.get(query, callback);
+};
+
+// Find user by username
+db.findUserByUsername = function(username, callback) {
+  this.get("SELECT * FROM users WHERE username = ?", [username], callback);
+};
+
+// Create a new user
+db.createUser = function(username, password, email, callback) {
+  this.run("INSERT INTO users (username, password, email) VALUES (?, ?, ?)", 
+    [username, password, email], callback);
+};
+
+// Get todos by user ID
+db.getTodosByUserId = function(userId, callback) {
+  this.all("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC", [userId], callback);
+};
+
+// Create a new todo
+db.createTodo = function(userId, title, callback) {
+  this.run("INSERT INTO todos (user_id, title) VALUES (?, ?)", [userId, title], callback);
+};
+
+// Get todo by ID
+db.getTodoById = function(todoId, callback) {
+  this.get("SELECT * FROM todos WHERE id = ?", [todoId], callback);
+};
+
+// Delete todo
+db.deleteTodo = function(todoId, callback) {
+  this.run("DELETE FROM todos WHERE id = ?", [todoId], callback);
+};
+
+// Get all messages
+db.getAllMessages = function(callback) {
+  this.all("SELECT m.*, u.username FROM messages m LEFT JOIN users u ON m.user_id = u.id ORDER BY m.created_at DESC", callback);
+};
+
+// Create a new message
+db.createMessage = function(userId, content, callback) {
+  this.run("INSERT INTO messages (user_id, content) VALUES (?, ?)", [userId, content], callback);
+};
+
+// Delete message
+db.deleteMessage = function(messageId, callback) {
+  this.run("DELETE FROM messages WHERE id = ?", [messageId], callback);
+};
+
+// Get all users
+db.getAllUsers = function(callback) {
+  this.all("SELECT id, username, email, role, isAdmin, created_at FROM users", callback);
+};
+
 // Export the database connection
 module.exports = db; 

@@ -306,6 +306,48 @@ router.get('/admin', (req, res) => {
   });
 });
 
+// Users list page
+router.get('/users', (req, res) => {
+  db.getAllUsers((err, users) => {
+    if (err) {
+      console.error('Error fetching users:', err);
+      req.flash('error', 'Failed to load users');
+      return res.render('users', { 
+        title: 'Users Directory - DarkVault',
+        user: req.session.user,
+        users: []
+      });
+    }
+    
+    res.render('users', { 
+      title: 'Users Directory - DarkVault',
+      user: req.session.user,
+      users: users
+    });
+  });
+});
+
+// Files page
+router.get('/files', (req, res) => {
+  db.all("SELECT * FROM files", (err, files) => {
+    if (err) {
+      console.error('Error fetching files:', err);
+      req.flash('error', 'Failed to load files');
+      return res.render('files', { 
+        title: 'File Manager - DarkVault',
+        user: req.session.user,
+        files: []
+      });
+    }
+    
+    res.render('files', { 
+      title: 'File Manager - DarkVault',
+      user: req.session.user,
+      files: files
+    });
+  });
+});
+
 // Flag tracking dashboard
 router.get('/flags', (req, res) => {
   res.render('flags', {
