@@ -1386,4 +1386,241 @@ router.post('/render-template', (req, res) => {
   }
 });
 
+// API Documentation endpoint
+router.get('/docs', (req, res) => {
+  res.render('api-docs', {
+    title: 'API Documentation - DarkVault',
+    user: req.session.user
+  });
+});
+
+// Token Leak endpoint - deliberately leaks auth token
+router.get('/token-leak', checkJwt, (req, res) => {
+  const referer = req.headers.referer || 'Unknown';
+  
+  // Logging the token to console (information disclosure)
+  console.log(`JWT Token used: ${req.headers.authorization}`);
+  
+  // Set token in response header where it might be leaked
+  res.setHeader('X-Auth-Token', req.headers.authorization);
+  // Set token in a non-httpOnly, non-secure cookie
+  res.cookie('auth_token', req.headers.authorization.replace('Bearer ', ''), {
+    httpOnly: false,
+    secure: false,
+    sameSite: 'none'
+  });
+  
+  // Including token in the response
+  res.json({
+    message: 'Your request has been processed',
+    referer: referer,
+    // Leaking token in response
+    debug_token: req.headers.authorization,
+    user_id: req.user.id
+  });
+});
+
+// GraphQL API with introspection enabled
+router.post('/graphql', (req, res) => {
+  const { query } = req.body;
+  
+  // If it's an introspection query, return schema information
+  if (query && query.includes('__schema')) {
+    return res.json({
+      data: {
+        __schema: {
+          types: [
+            { name: 'User', fields: [
+              { name: 'id', type: 'ID' },
+              { name: 'username', type: 'String' },
+              { name: 'email', type: 'String' },
+              { name: 'password', type: 'String' }, // Leaking password field in schema
+              { name: 'isAdmin', type: 'Boolean' },
+              { name: 'apiKey', type: 'String' }  // Leaking sensitive field
+            ]},
+            { name: 'Product', fields: [
+              { name: 'id', type: 'ID' },
+              { name: 'name', type: 'String' },
+              { name: 'price', type: 'Float' },
+              { name: 'secret_discount', type: 'String' } // Leaking sensitive field
+            ]},
+            { name: 'AdminSettings', fields: [
+              { name: 'secretKey', type: 'String' }, // Leaking sensitive field
+              { name: 'databaseUrl', type: 'String' } // Leaking sensitive field
+            ]}
+          ]
+        }
+      }
+    });
+  }
+  
+  // Basic mock response for any other query
+  res.json({
+    data: {
+      message: 'GraphQL query processed',
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
+// Rate-limit API endpoint with bypass vulnerability
+let requestCounts = {};
+router.get('/rate-limit', (req, res) => {
+  const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  const bypass = req.query.bypass;
+  
+  // Vulnerability: easy to bypass with a parameter
+  if (bypass === 'true') {
+    return res.json({
+      message: 'Rate limit bypassed',
+      data: 'This is sensitive rate-limited data'
+    });
+  }
+  
+  // Check rate limit
+  if (!requestCounts[clientIp]) {
+    requestCounts[clientIp] = {
+      count: 1,
+      firstRequest: Date.now()
+    };
+  } else {
+    // Reset count after 1 minute
+    if (Date.now() - requestCounts[clientIp].firstRequest > 60000) {
+      requestCounts[clientIp] = {
+        count: 1,
+        firstRequest: Date.now()
+      };
+    } else {
+      requestCounts[clientIp].count++;
+    }
+  }
+  
+  // If rate limit exceeded
+  if (requestCounts[clientIp].count > 5) {
+    return res.status(429).json({
+      error: 'Rate limit exceeded. Try again later or use the bypass parameter.'
+    });
+  }
+  
+  res.json({
+    message: 'Request processed successfully',
+    requests_remaining: 5 - requestCounts[clientIp].count,
+    data: 'This is sensitive rate-limited data'
+  });
+});
+
+// Encryption API with weak encryption
+router.post('/encrypt-data', (req, res) => {
+  const { data, key } = req.body;
+  
+  if (!data) {
+    return res.status(400).json({ error: 'Data is required' });
+  }
+  
+  // Use a weak encryption function
+  const encryptionKey = key || 'default-weak-key';
+  const encrypted = weakEncrypt(data, encryptionKey);
+  
+  res.json({
+    encrypted,
+    // Vulnerability: leaking the encryption key and algorithm in response
+    key: encryptionKey,
+    algorithm: 'XOR with key, Base64 encoded',
+    message: 'Data encrypted successfully'
+  });
+});
+
+// Template rendering API with SSTI vulnerability
+router.post('/render-template', (req, res) => {
+  const { template, context } = req.body;
+  
+  if (!template) {
+    return res.status(400).json({ error: 'Template is required' });
+  }
+  
+  try {
+    // Vulnerable templating - directly evaluates template with user data
+    const result = eval('`' + template + '`');
+    
+    res.json({
+      rendered: result,
+      message: 'Template rendered successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Template rendering failed',
+      message: error.message
+    });
+  }
+});
+
+// Deserialization API with vulnerable deserialization
+router.post('/deserialize', (req, res) => {
+  const { data } = req.body;
+  
+  if (!data) {
+    return res.status(400).json({ error: 'Serialized data is required' });
+  }
+  
+  try {
+    // Insecure deserialization vulnerability
+    const deserializedData = eval('(' + data + ')');
+    
+    // Process the deserialized data
+    const processedData = { 
+      received: true,
+      processed: deserializedData,
+      timestamp: new Date().toISOString()
+    };
+    
+    res.json({
+      success: true,
+      message: 'Data deserialized successfully',
+      result: processedData
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Deserialization failed',
+      message: error.message
+    });
+  }
+});
+
+// Logging API with information disclosure
+router.get('/logs', checkJwt, (req, res) => {
+  const { level, lines } = req.query;
+  const logLevel = level || 'info';
+  const numLines = parseInt(lines) || 10;
+  
+  // Insecure access control - only checking for admin in query
+  if (!req.user.isAdmin && req.query.admin !== 'true') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  
+  // Generate mock logs with sensitive information
+  const logs = [];
+  const sensitiveInfo = [
+    'password=admin123',
+    'apiKey=sk_live_123456789abcdef',
+    'connectionString=postgres://user:pass@localhost/db',
+    'token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    'privateKey=-----BEGIN RSA PRIVATE KEY-----\nMIIEogIBAAKCAQEA...',
+    'creditCard=4111-1111-1111-1111'
+  ];
+  
+  for (let i = 0; i < numLines; i++) {
+    logs.push({
+      timestamp: new Date(Date.now() - i * 60000).toISOString(),
+      level: logLevel,
+      message: `Log entry ${i + 1}`,
+      data: i % 3 === 0 ? sensitiveInfo[i % sensitiveInfo.length] : `Regular log information ${i}`
+    });
+  }
+  
+  res.json({
+    logs,
+    message: `Retrieved ${logs.length} log entries`
+  });
+});
+
 module.exports = router; 

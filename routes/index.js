@@ -887,4 +887,136 @@ router.post('/render-template', (req, res) => {
   }
 });
 
+// Add a profile redirect route
+router.get('/profile', (req, res) => {
+  if (!req.session.user) {
+    req.flash('error', 'You must be logged in to view your profile');
+    return res.redirect('/login');
+  }
+  
+  // Redirect to the user's profile page
+  res.redirect(`/user/${req.session.user.id}`);
+});
+
+// Client-side page with DOM-based XSS vulnerability
+router.get('/client-side', (req, res) => {
+  res.render('client-render', {
+    title: 'Client-Side App - DarkVault',
+    user: req.session.user,
+    defaultSearch: req.query.search || '',
+    injectedData: req.query.data || ''
+  });
+});
+
+// Add a forgot-password redirect to fix broken link
+router.get('/forgot-password', (req, res) => {
+  res.redirect('/user/forgot-password');
+});
+
+// Version info page (information disclosure vulnerability)
+router.get('/version-info', (req, res) => {
+  // Deliberately leaking sensitive information
+  const versionInfo = {
+    application: 'DarkVault',
+    version: '1.2.3',
+    framework: 'Express.js 4.17.1',
+    node: process.version,
+    database: 'SQLite 3.36.0',
+    modules: {
+      bcrypt: '5.0.1',
+      jwt: '8.5.1',
+      'express-session': '1.17.2'
+    },
+    server: {
+      os: process.platform,
+      hostname: require('os').hostname(),
+      users: require('os').userInfo().username,
+      directories: {
+        app: __dirname,
+        node_modules: path.join(__dirname, '../node_modules'),
+        upload_path: path.join(__dirname, '../uploads')
+      }
+    },
+    environment: process.env.NODE_ENV || 'development',
+    // API keys that shouldn't be exposed
+    api_keys: {
+      mailchimp: 'abc123-us10',
+      stripe_test: 'sk_test_123456789',
+      aws_secret: 'AKIAIOSFODNN7EXAMPLE'
+    }
+  };
+  
+  res.setHeader('X-Powered-By', 'Express 4.17.1');
+  
+  if (req.query.format === 'json') {
+    res.json(versionInfo);
+  } else {
+    res.render('document', {
+      title: 'Version Information - DarkVault',
+      user: req.session.user,
+      document: {
+        title: 'System Version Information',
+        content: JSON.stringify(versionInfo, null, 2)
+      }
+    });
+  }
+});
+
+// Directory listing (information disclosure vulnerability)
+router.get('/directory-listing', (req, res) => {
+  const basePath = req.query.path || '.';
+  const fullPath = path.resolve(basePath);
+  
+  // Vulnerable path traversal - no sanitization of path parameter
+  fs.readdir(fullPath, { withFileTypes: true }, (err, dirents) => {
+    if (err) {
+      return res.status(500).render('error', {
+        title: 'Error - DarkVault',
+        errorCode: 500,
+        message: `Error reading directory: ${err.message}`,
+        user: req.session.user
+      });
+    }
+    
+    const fileList = dirents.map(dirent => {
+      const entryPath = path.join(fullPath, dirent.name);
+      let stats;
+      try {
+        stats = fs.statSync(entryPath);
+      } catch (err) {
+        stats = { size: 0, mtime: new Date() };
+      }
+      
+      return {
+        name: dirent.name,
+        isDirectory: dirent.isDirectory(),
+        size: stats.size,
+        modified: stats.mtime,
+        path: path.join(basePath, dirent.name)
+      };
+    });
+    
+    if (req.query.format === 'json') {
+      res.json({
+        current_path: fullPath,
+        parent_path: path.dirname(fullPath),
+        files: fileList
+      });
+    } else {
+      res.render('files', {
+        title: 'Directory Listing - DarkVault',
+        user: req.session.user,
+        current_path: fullPath,
+        parent_path: path.dirname(fullPath),
+        files: fileList
+      });
+    }
+  });
+});
+
+// Handle robots.txt requests
+router.get('/robots.txt', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/robots.txt'));
+});
+
 module.exports = router; 

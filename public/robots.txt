@@ -1,0 +1,37 @@
+# DarkVault Robots.txt
+# Version 1.2.3
+
+User-agent: *
+# Standard directories
+Disallow: /admin/
+Disallow: /api/
+Disallow: /uploads/
+Disallow: /backup/
+Disallow: /config/
+Disallow: /logs/
+
+# Hidden directories that shouldn't be exposed
+Disallow: /admin-backup/         # Admin backup files
+Disallow: /secret-api/           # Secret API endpoints
+Disallow: /dev/                  # Development files
+Disallow: /internal/             # Internal systems
+Disallow: /phpmyadmin/           # Database admin
+Disallow: /jenkins/              # CI/CD server
+
+# Secret pages with sensitive information
+Disallow: /admin/dashboard.php   # Admin dashboard
+Disallow: /api/internal/keys     # API keys
+Disallow: /backup/db-2023.sql    # Database backup
+Disallow: /config/database.ini   # Database config 
+Disallow: /logs/error.log        # Error logs
+Disallow: /dev/test-accounts.txt # Test accounts
+
+# Flag for CTF challenges
+# Flag: DARK{robots_txt_info_leak}
+
+# Development server URLs
+# http://dev.darkvault.local
+# http://staging.darkvault.local
+# http://test.darkvault.local
+
+Sitemap: https://darkvault.example.com/sitemap.xml 

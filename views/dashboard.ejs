@@ -301,6 +301,50 @@
                 </div>
             </div>
         </div>
+
+        <h3 class="mb-3">API Documentation</h3>
+        <div class="row">
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">API Authentication</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>To use the API authentication endpoints:</p>
+                        <pre><code>// Login
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "your-username",
+  "password": "your-password"
+}
+
+// Response
+{
+  "token": "jwt-token",
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "role": "admin",
+    "isAdmin": true
+  }
+}
+</code></pre>
+                        <p>Use the returned token in subsequent requests:</p>
+                        <pre><code>GET /api/users
+Authorization: Bearer your-jwt-token</code></pre>
+                        <a href="/api/docs" class="btn btn-primary">View Full API Documentation</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info mt-3">
+            <i class="bi bi-info-circle"></i> 
+            <strong>Navigation Help:</strong> Some links may point to endpoints that are not fully implemented in this educational environment. 
+            If you encounter a 404 error, check the <a href="/site-map" class="alert-link">Site Map</a> or <a href="/api/docs" class="alert-link">API Documentation</a> for available endpoints.
+        </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
