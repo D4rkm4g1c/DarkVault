@@ -1,18 +1,35 @@
 <%- include('partials/header') %>
 
 <div class="container mt-4">
-  <h2>Search Results</h2>
+  <h2>Search</h2>
   
+  <!-- Search Form -->
+  <div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+      <h4>Search DarkVault</h4>
+    </div>
+    <div class="card-body">
+      <form action="/search" method="GET" id="search-form">
+        <div class="input-group mb-3">
+          <input type="text" class="form-control" name="q" id="search-input" placeholder="Enter your search query..." value="<%= typeof query !== 'undefined' ? query : '' %>">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Search</button>
+        </div>
+        <small class="text-muted">This search is vulnerable to XSS. Try injecting HTML or JavaScript!</small>
+      </form>
+    </div>
+  </div>
+  
+  <% if (typeof query !== 'undefined' && query) { %>
   <div class="card mb-4">
     <div class="card-header">
-      <h4>Search for: <%= query %></h4>
+      <h4>Results for: <%= query %></h4>
     </div>
     <div class="card-body">
       <% if (results && results.length > 0) { %>
         <ul class="list-group">
           <% results.forEach(result => { %>
             <li class="list-group-item">
-              <h5><%= result.title || result.name || 'Untitled' %></h5>
+              <h5><%- result.title || result.name || 'Untitled' %></h5>
               <p><%= result.content || result.description || 'No description available' %></p>
               <% if (result.url) { %>
                 <a href="<%= result.url %>" class="btn btn-sm btn-primary">View</a>
@@ -24,6 +41,11 @@
         <div class="alert alert-info">No results found for "<%= query %>"</div>
       <% } %>
     </div>
+  </div>
+  <% } %>
+  
+  <div class="alert alert-warning">
+    <strong>Security Vulnerability:</strong> This search feature is intentionally vulnerable to Cross-Site Scripting (XSS) attacks. The user input is not sanitized before being displayed in the results.
   </div>
   
   <div class="mb-3">
