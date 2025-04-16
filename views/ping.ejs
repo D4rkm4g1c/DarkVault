@@ -81,40 +81,44 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Network Tools</h1>
-            <div class="nav-links">
-                <a href="/dashboard">Dashboard</a>
-                <% if (user.isAdmin) { %>
-                    <a href="/admin">Admin Panel</a>
-                <% } %>
-                <a href="/logout">Logout</a>
-            </div>
-        </header>
+    <%- include('partials/header') %>
+
+    <div class="container mt-4">
+        <h2>Network Ping Tool</h2>
         
-        <div class="tool-card">
-            <h2>Ping Tool</h2>
-            <p>Use this tool to check if a host is reachable on the network.</p>
-            
-            <form action="/ping" method="POST">
-                <input type="text" name="host" placeholder="Enter hostname or IP address (e.g., google.com)" required>
-                <button type="submit">Ping Host</button>
-            </form>
-            
-            <div class="help-text">
-                <p>Example: google.com, 192.168.1.1</p>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Ping Host</h4>
             </div>
-            
-            <% if (typeof output !== 'undefined') { %>
-                <div class="output"><%= output %></div>
-            <% } %>
+            <div class="card-body">
+                <form action="/ping" method="GET" class="mb-3">
+                    <div class="form-group">
+                        <label for="host-input">Host to ping:</label>
+                        <input type="text" class="form-control" id="host-input" name="host" placeholder="Enter hostname or IP address" value="<%= typeof host !== 'undefined' ? host : '' %>">
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">Ping</button>
+                </form>
+                
+                <% if (typeof output !== 'undefined' && output) { %>
+                    <div class="mt-4">
+                        <h5>Output for: <%= host %></h5>
+                        <pre class="bg-dark text-light p-3"><%= output %></pre>
+                    </div>
+                <% } %>
+                
+                <% if (typeof error !== 'undefined' && error) { %>
+                    <div class="alert alert-danger mt-3">
+                        Error: <%= error %>
+                    </div>
+                <% } %>
+            </div>
         </div>
         
-        <div class="tool-card">
-            <h2>Other Network Tools</h2>
-            <p>More network tools will be added soon...</p>
+        <div class="mb-3">
+            <a href="/" class="btn btn-secondary">Back to Dashboard</a>
         </div>
     </div>
+
+    <%- include('partials/footer') %>
 </body>
 </html> 
