@@ -105,6 +105,21 @@ db.serialize(() => {
       db.run("INSERT INTO users (username, password, email, role) VALUES ('alice', 'password123', 'alice@example.com', 'user')");
       db.run("INSERT INTO users (username, password, email, role) VALUES ('bob', 'bobpassword', 'bob@example.com', 'user')");
       console.log("Added default users");
+      
+      // Add some sample messages
+      const now = new Date().toISOString();
+      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (2, 'Hello admin, I can\'t access my account. Please help!', '${now}')`);
+      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (3, '<script>alert("XSS in admin message")</script>', '${now}')`);
+      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (2, 'Is there a way to increase my transfer limit?', '${now}')`);
+      console.log("Added sample messages");
+      
+      // Add some sample transactions
+      const yesterday = new Date(Date.now() - 86400000).toISOString();
+      const twoDaysAgo = new Date(Date.now() - 172800000).toISOString();
+      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (2, 3, 150.00, '${yesterday}', 'Dinner payment')`);
+      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (3, 2, 250.00, '${twoDaysAgo}', 'Concert tickets')`);
+      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (1, 2, 1000.00, '${now}', 'Welcome bonus! <script>alert("XSS in transaction")</script>')`);
+      console.log("Added sample transactions");
     }
   });
 });
@@ -351,6 +366,53 @@ app.get('/api/admin/export-users', verifyToken, (req, res) => {
   } else {
     return res.status(403).json({ message: 'Unauthorized' });
   }
+});
+
+// Fetch admin messages - Added endpoint
+app.get('/api/admin/messages', verifyToken, (req, res) => {
+  // Weak role check that can be bypassed
+  if (req.user.role !== 'admin' && req.query.isAdmin !== 'true') {
+    return res.status(403).json({ message: 'Unauthorized' });
+  }
+  
+  // Get all messages with user information
+  db.all(`
+    SELECT m.*, u.username 
+    FROM admin_messages m
+    LEFT JOIN users u ON m.user_id = u.id
+    ORDER BY m.date DESC
+  `, (err, messages) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    return res.status(200).json(messages);
+  });
+});
+
+// Get transaction history - Missing endpoint
+app.get('/api/transactions', verifyToken, (req, res) => {
+  const user_id = req.query.user_id;
+  
+  if (!user_id) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+  
+  // Vulnerable SQL - no check if the user_id matches the authenticated user
+  // Allows any authenticated user to see any other user's transactions
+  const query = `
+    SELECT * FROM transactions 
+    WHERE sender_id = ${user_id} OR receiver_id = ${user_id}
+    ORDER BY date DESC
+  `;
+  
+  db.all(query, (err, transactions) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    return res.status(200).json(transactions);
+  });
 });
 
 // Start the server

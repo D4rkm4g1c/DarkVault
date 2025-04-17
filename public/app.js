@@ -595,7 +595,7 @@ function displayAdminMessages(messages) {
     // Vulnerable to XSS via message content
     messageDiv.innerHTML = `
       <div class="admin-message-meta">
-        From User ID: ${msg.user_id} - ${new Date(msg.date).toLocaleString()}
+        From: ${msg.username || 'Unknown'} (ID: ${msg.user_id}) - ${new Date(msg.date).toLocaleString()}
       </div>
       <p class="admin-message-content">${msg.message}</p>
     `;
