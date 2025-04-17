@@ -16,12 +16,41 @@ cd darkvault
 npm install
 ```
 
-3. Start the application:
+3. Start the web application:
 ```
 npm start
 ```
 
 4. Access the application at `http://localhost:3000`
+
+## Local API Server
+The DarkVault application includes a separate local API server that provides all the necessary endpoints for the web application to function. This allows you to run the API separately or to test against the API directly.
+
+1. To start the local API server:
+```
+chmod +x start-api.sh
+./start-api.sh
+```
+
+2. The API server will run on `http://localhost:3001`
+
+3. You can also start the API server manually:
+```
+node local-api-server.js
+```
+
+4. API Documentation can be found at:
+- Authentication: `/api/auth/login`, `/api/auth/register`
+- Users: `/api/users`, `/api/users/:id`
+- Todos: `/api/todos`, `/api/todos/:id`
+- Products: `/api/products`, `/api/products/:id`
+- Messages: `/api/messages`
+- File Upload: `/api/upload`
+- User Preferences: `/api/user/preferences`
+- Vulnerable Endpoints:
+  - Command Injection: `/api/system/ping?host=localhost`
+  - XXE: `/api/parse-xml`
+  - Insecure Deserialization: `/api/deserialize`
 
 ## Default Login Credentials
 | Username | Password | Role | Description |

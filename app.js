@@ -16,6 +16,10 @@ const db = require('./db');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// API Server configuration
+const apiServerUrl = process.env.API_SERVER_URL || 'http://localhost:3001';
+app.locals.apiServerUrl = apiServerUrl;
+
 // Set up view engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -61,6 +65,7 @@ app.use((req, res, next) => {
   res.locals.success_msg = req.flash('success') || req.flash('success_msg') || [];
   res.locals.error_msg = req.flash('error') || req.flash('error_msg') || [];
   res.locals.user = req.session.user || null;
+  res.locals.apiServerUrl = apiServerUrl;
   next();
 });
 
@@ -97,6 +102,7 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(port, () => {
   console.log(`DarkVault server running on http://localhost:${port}`);
+  console.log(`API Server URL: ${apiServerUrl}`);
   console.log('WARNING: This application contains deliberate vulnerabilities. Do not use in production.');
 });
 
