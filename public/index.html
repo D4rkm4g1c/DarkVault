@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DarkVault - Banking</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Vulnerable to XSS via URL parameters -->
+  <div id="message-banner"></div>
+
+  <div class="container">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">DarkVault</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav">
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-home">Home</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-transfer">Transfer</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-transactions">Transactions</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-profile">Profile</a></li>
+            <li class="nav-item" id="admin-section" style="display:none"><a class="nav-link" href="#" id="nav-admin">Admin</a></li>
+          </ul>
+        </div>
+        <div class="d-flex">
+          <span class="navbar-text me-3" id="user-balance"></span>
+          <button class="btn btn-outline-light" id="btn-logout" style="display:none">Logout</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Auth Section -->
+    <div id="auth-section">
+      <div class="row justify-content-center">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <ul class="nav nav-tabs card-header-tabs">
+                <li class="nav-item">
+                  <a class="nav-link active" id="login-tab" href="#">Login</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" id="register-tab" href="#">Register</a>
+                </li>
+              </ul>
+            </div>
+            <div class="card-body">
+              <!-- Login Form -->
+              <form id="login-form">
+                <div class="mb-3">
+                  <label for="login-username" class="form-label">Username</label>
+                  <input type="text" class="form-control" id="login-username">
+                </div>
+                <div class="mb-3">
+                  <label for="login-password" class="form-label">Password</label>
+                  <input type="password" class="form-control" id="login-password">
+                </div>
+                <button type="submit" class="btn btn-primary">Login</button>
+              </form>
+
+              <!-- Register Form -->
+              <form id="register-form" style="display:none">
+                <div class="mb-3">
+                  <label for="register-username" class="form-label">Username</label>
+                  <input type="text" class="form-control" id="register-username">
+                </div>
+                <div class="mb-3">
+                  <label for="register-email" class="form-label">Email</label>
+                  <input type="email" class="form-control" id="register-email">
+                </div>
+                <div class="mb-3">
+                  <label for="register-password" class="form-label">Password</label>
+                  <input type="password" class="form-control" id="register-password">
+                </div>
+                <button type="submit" class="btn btn-primary">Register</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main App Section (Hidden until login) -->
+    <div id="app-section" style="display:none">
+      <!-- Home Section -->
+      <div id="home-section" class="app-page">
+        <h2>Welcome to DarkVault</h2>
+        <div class="row mt-4">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">Account Summary</div>
+              <div class="card-body">
+                <p><strong>Username:</strong> <span id="summary-username"></span></p>
+                <p><strong>Balance:</strong> $<span id="summary-balance"></span></p>
+                <p><strong>Account Type:</strong> <span id="summary-role"></span></p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">Quick Actions</div>
+              <div class="card-body">
+                <button class="btn btn-primary mb-2 w-100" id="quick-transfer">New Transfer</button>
+                <button class="btn btn-secondary mb-2 w-100" id="quick-search">Search Users</button>
+                <button class="btn btn-info w-100" id="btn-upload">Upload Statement</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transfer Section -->
+      <div id="transfer-section" class="app-page" style="display:none">
+        <h2>Transfer Money</h2>
+        <div class="card mt-4">
+          <div class="card-body">
+            <form id="transfer-form">
+              <div class="mb-3">
+                <label for="transfer-to" class="form-label">Recipient ID</label>
+                <input type="number" class="form-control" id="transfer-to" required>
+              </div>
+              <div class="mb-3">
+                <label for="transfer-amount" class="form-label">Amount</label>
+                <input type="number" class="form-control" id="transfer-amount" step="0.01" required>
+              </div>
+              <div class="mb-3">
+                <label for="transfer-note" class="form-label">Note</label>
+                <textarea class="form-control" id="transfer-note"></textarea>
+                <!-- This field is vulnerable to XSS -->
+              </div>
+              <button type="submit" class="btn btn-primary">Send Money</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions Section -->
+      <div id="transactions-section" class="app-page" style="display:none">
+        <h2>Transaction History</h2>
+        <div class="card mt-4">
+          <div class="card-body">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>From/To</th>
+                  <th>Date</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody id="transactions-table">
+                <!-- Transactions will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Profile Section -->
+      <div id="profile-section" class="app-page" style="display:none">
+        <h2>User Profile</h2>
+        <div class="row mt-4">
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">Personal Information</div>
+              <div class="card-body">
+                <p><strong>User ID:</strong> <span id="profile-id"></span></p>
+                <p><strong>Username:</strong> <span id="profile-username"></span></p>
+                <p><strong>Email:</strong> <span id="profile-email"></span></p>
+                <p><strong>Role:</strong> <span id="profile-role"></span></p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">Message Admin</div>
+              <div class="card-body">
+                <form id="message-form">
+                  <div class="mb-3">
+                    <label for="message-text" class="form-label">Your Message</label>
+                    <textarea class="form-control" id="message-text" required></textarea>
+                  </div>
+                  <button type="submit" class="btn btn-primary">Send Message</button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Hidden field containing user_id, vulnerable to CSRF and parameter tampering -->
+            <input type="hidden" id="message-user-id" value="">
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Section -->
+      <div id="admin-section-content" class="app-page" style="display:none">
+        <h2>Admin Dashboard</h2>
+        <div class="row mt-4">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">User Management</div>
+              <div class="card-body">
+                <button class="btn btn-primary mb-2 w-100" id="btn-export-users">Export All Users</button>
+                <button class="btn btn-danger mb-2 w-100" id="btn-reset-balances">Reset All Balances</button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">Run Report</div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <label for="report-name" class="form-label">Report Name</label>
+                  <!-- Vulnerable to command injection -->
+                  <input type="text" class="form-control" id="report-name">
+                </div>
+                <button class="btn btn-primary" id="btn-run-report">Generate Report</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">User Messages</div>
+              <div class="card-body">
+                <div id="admin-messages">
+                  <!-- Messages will be loaded here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- File Upload Modal -->
+    <div class="modal fade" id="uploadModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Upload Statement</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="upload-form">
+              <div class="mb-3">
+                <label for="upload-file" class="form-label">Select File</label>
+                <input class="form-control" type="file" id="upload-file">
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" id="btn-upload-submit">Upload</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Modal -->
+    <div class="modal fade" id="searchModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Search Users</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="search-term" class="form-label">Search Term</label>
+              <input type="text" class="form-control" id="search-term">
+            </div>
+            <button class="btn btn-primary" id="btn-search">Search</button>
+            
+            <div class="mt-3">
+              <h6>Results:</h6>
+              <div id="search-results">
+                <!-- Search results will be displayed here -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html> 

