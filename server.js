@@ -155,10 +155,12 @@ app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   
   // Vulnerable SQL query - no parameterization
-  const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
+  // Using double quotes for string literals to avoid issues with apostrophes
+  const query = `SELECT * FROM users WHERE username = "${username}" AND password = "${password}"`;
   
   db.get(query, (err, user) => {
     if (err) {
+      console.error('Login error:', err.message);
       return res.status(500).json({ error: err.message });
     }
     
@@ -201,13 +203,9 @@ app.post('/api/register', (req, res) => {
   // Log registration attempt
   console.log(`Registration attempt: username=${username}, email=${email}`);
   
-  // Very basic escaping - still vulnerable to SQL injection but handles simple quotes
-  const escapedUsername = username.replace(/'/g, "''");
-  const escapedPassword = password.replace(/'/g, "''");
-  const escapedEmail = email.replace(/'/g, "''");
-  
-  // No validation on inputs - deliberately vulnerable to SQL injection
-  const query = `INSERT INTO users (username, password, email) VALUES ('${escapedUsername}', '${escapedPassword}', '${escapedEmail}')`;
+  // Double quotes instead of single quotes to avoid SQL errors with apostrophes
+  // Still vulnerable to SQL injection but will work for most inputs
+  const query = `INSERT INTO users (username, password, email) VALUES ("${username}", "${password}", "${email}")`;
   
   console.log('Executing SQL query:', query);
   
@@ -275,11 +273,11 @@ app.post('/api/transfer', verifyToken, (req, res) => {
   const fromId = req.user.id;
   
   // Vulnerable to XSS in the note field (will be displayed to receiver)
+  // Using double quotes for string literals to avoid issues with apostrophes
   
-  // Vulnerable SQL that doesn't check balance
   const transferQuery = `
     INSERT INTO transactions (sender_id, receiver_id, amount, date, note) 
-    VALUES (${fromId}, ${to}, ${amount}, '${new Date().toISOString()}', '${note}')
+    VALUES (${fromId}, ${to}, ${amount}, "${new Date().toISOString()}", "${note}")
   `;
   
   // Update balances
@@ -288,16 +286,19 @@ app.post('/api/transfer', verifyToken, (req, res) => {
   
   db.run(transferQuery, function(err) {
     if (err) {
+      console.error('Transfer error:', err.message);
       return res.status(500).json({ error: err.message });
     }
     
     db.run(updateSenderQuery, function(err) {
       if (err) {
+        console.error('Update sender balance error:', err.message);
         return res.status(500).json({ error: err.message });
       }
       
       db.run(updateReceiverQuery, function(err) {
         if (err) {
+          console.error('Update receiver balance error:', err.message);
           return res.status(500).json({ error: err.message });
         }
         
@@ -366,13 +367,15 @@ app.post('/api/messages', verifyToken, (req, res) => {
   const { user_id, message } = req.body;
   
   // No validation if the authenticated user owns the message
+  // Using double quotes for string literals to avoid issues with apostrophes
   const query = `
     INSERT INTO admin_messages (user_id, message, date) 
-    VALUES (${user_id}, '${message}', '${new Date().toISOString()}')
+    VALUES (${user_id}, "${message}", "${new Date().toISOString()}")
   `;
   
   db.run(query, function(err) {
     if (err) {
+      console.error('Message error:', err.message);
       return res.status(500).json({ error: err.message });
     }
     
