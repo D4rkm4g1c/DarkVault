@@ -1,7 +1,5 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const cookieParser = require('cookie-parser');
-const session = require('express-session');
 const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
@@ -39,18 +37,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({
   origin: '*',
   credentials: true
-}));
-
-// Insecure cookie settings
-app.use(cookieParser());
-app.use(session({
-  secret: 'session-secret-key',
-  resave: true,
-  saveUninitialized: true,
-  cookie: {
-    httpOnly: false,
-    secure: false // Not using HTTPS
-  }
 }));
 
 // Bodyparser setup with high limit
@@ -129,7 +115,12 @@ db.serialize(() => {
       db.run(`INSERT INTO users (username, password, email, role, balance) VALUES ("admin", "admin123", "admin@darkvault.com", "admin", 100000.00)`);
       db.run(`INSERT INTO users (username, password, email, role) VALUES ("alice", "password123", "alice@example.com", "user")`);
       db.run(`INSERT INTO users (username, password, email, role) VALUES ("bob", "bobpassword", "bob@example.com", "user")`);
-      console.log("Added default users");
+      
+      // Add bot users with restricted permissions
+      db.run(`INSERT INTO users (username, password, email, role) VALUES ("admin_message_bot", "botpassword1", "message_bot@darkvault.com", "bot")`);
+      db.run(`INSERT INTO users (username, password, email, role) VALUES ("admin_feedback_bot", "botpassword2", "feedback_bot@darkvault.com", "bot")`);
+      
+      console.log("Added default users and bot users");
       
       // Add some sample messages
       const now = new Date().toISOString();
@@ -237,20 +228,33 @@ const verifyToken = (req, res, next) => {
   const token = req.headers['authorization'];
   
   if (!token) {
-    // Vulnerable bypass - allows debug mode
+    // Vulnerable bypass - allows debug mode with bot permissions instead of admin
     if (req.query.debug === 'true') {
-      req.user = { id: 1, username: 'admin', role: 'admin' };
-      return next();
+      db.get("SELECT id, username, role FROM users WHERE username = 'admin_message_bot'", (err, botUser) => {
+        if (err || !botUser) {
+          return res.status(401).json({ message: 'Debug mode failed to authenticate' });
+        }
+        
+        // Use the bot user for debug mode
+        req.user = { 
+          id: botUser.id, 
+          username: botUser.username, 
+          role: botUser.role,
+          botType: 'message_bot'
+        };
+        return next();
+      });
+    } else {
+      return res.status(401).json({ message: 'No token provided' });
     }
-    return res.status(401).json({ message: 'No token provided' });
-  }
-  
-  try {
-    const decoded = jwt.verify(token.replace('Bearer ', ''), JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: 'Invalid token' });
+  } else {
+    try {
+      const decoded = jwt.verify(token.replace('Bearer ', ''), JWT_SECRET);
+      req.user = decoded;
+      next();
+    } catch (err) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
   }
 };
 
@@ -268,19 +272,33 @@ app.get('/api/users/:id', verifyToken, (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    // Add secret information if accessing the admin profile with a bot token
+    // Add relevant information based on user type
     if (user.id === 1 && user.role === 'admin') {
-      // Check if this is a bot token by looking for special fields in the JWT
-      if (req.user.privilegeLevel === 'system') {
-        // This is the headless feedback bot token
-        user.secretInfo = "HEADLESS_BOT_SECRET: Access to all system credentials and database backups at /admin/system/backups";
-        user.botType = "headless";
-        user.secretKey = "SYS_KEY_8675309";
-      } else if (req.user.id === 1 && req.user.role === 'admin' && !req.user.privilegeLevel) {
-        // This is the admin message bot token
-        user.secretInfo = "MESSAGE_BOT_SECRET: Admin credentials for the production database at db.example.com";
+      // This is the actual admin user
+      user.secretInfo = "ADMIN_SECRET: Full access to all system resources";
+    } else if (user.role === 'bot') {
+      // Check bot type from the token
+      if (req.user.botType === 'feedback_bot' && req.user.id === user.id) {
+        // This is the feedback bot accessing its own profile
+        user.secretInfo = "FEEDBACK_BOT_SECRET: Limited access to feedback management system";
+        user.botType = "feedback";
+        user.secretKey = "BOT_FB_KEY_8675309";
+        user.FLAG = "DARKVAULT_BOT_FLAG{f33db4ck_b0t_c0mpr0m1s3d}";
+      } else if (req.user.botType === 'message_bot' && req.user.id === user.id) {
+        // This is the message bot accessing its own profile
+        user.secretInfo = "MESSAGE_BOT_SECRET: Limited access to message management system";
         user.botType = "message";
-        user.secretKey = "ADMIN_KEY_12345";
+        user.secretKey = "BOT_MSG_KEY_12345";
+        user.FLAG = "DARKVAULT_BOT_FLAG{m3ss4g3_b0t_c0mpr0m1s3d}";
+      } else {
+        // Someone else is accessing the bot profile
+        if (user.username === 'admin_feedback_bot') {
+          user.botType = "feedback";
+          user.FLAG = "DARKVAULT_BOT_FLAG{f33db4ck_b0t_c0mpr0m1s3d}";
+        } else if (user.username === 'admin_message_bot') {
+          user.botType = "message";
+          user.FLAG = "DARKVAULT_BOT_FLAG{m3ss4g3_b0t_c0mpr0m1s3d}";
+        }
       }
     }
     
@@ -518,88 +536,99 @@ app.use((err, req, res, next) => {
 
 // Simulate an admin bot that automatically checks messages - vulnerable to XSS
 function setupAdminBot() {
-  console.log('Setting up vulnerable admin bot that checks messages every 5 minutes');
+  console.log('Setting up vulnerable admin bot that checks messages every 1 minute');
   
   // This is intentionally vulnerable!
   // The admin bot "runs" JavaScript in messages by executing them in a simulated browser environment
   function simulateAdminViewingMessages() {
     console.log('Secret admin bot is checking messages...');
     
-    // Generate admin JWT token
-    const sessionToken = jwt.sign(
-      { id: 1, username: 'admin', role: 'admin' },
-      JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-    
-    // Log admin token (in a real app, this would be a secret)
-    console.log('Admin bot using token:', sessionToken);
-    
-    // Fetch all messages
-    db.all(`
-      SELECT m.*, u.username 
-      FROM admin_messages m
-      LEFT JOIN users u ON m.user_id = u.id
-      ORDER BY m.date DESC
-    `, (err, messages) => {
-      if (err) {
-        console.error('Admin bot error:', err.message);
+    // Get the bot user ID
+    db.get("SELECT id, username, role FROM users WHERE username = 'admin_message_bot'", (err, botUser) => {
+      if (err || !botUser) {
+        console.error('Could not find admin message bot user:', err ? err.message : 'User not found');
         return;
       }
       
-      console.log(`Admin bot found ${messages.length} messages to review`);
+      // Generate bot JWT token
+      const sessionToken = jwt.sign(
+        { id: botUser.id, username: botUser.username, role: botUser.role, botType: 'message_bot' },
+        JWT_SECRET,
+        { expiresIn: '1h' }
+      );
       
-      // "Process" each message - in a real browser, this would execute any JavaScript
-      messages.forEach(msg => {
-        console.log(`Admin bot reading message from ${msg.username || 'Unknown'}: ${msg.message.substring(0, 30)}...`);
-        
-        // Check for potentially malicious content
-        if (msg.message.includes('<script>') || msg.message.includes('onerror=') || msg.message.includes('onload=')) {
-          console.log('VULNERABILITY: Admin bot executed JavaScript in message!');
-          console.log('In a real browser, this would allow stealing the JWT token: ' + sessionToken);
-          
-          // Extract URLs from the message (basic extraction for common patterns)
-          const urlRegex = /(https?:\/\/[^\s'"]+)/g;
-          const urls = msg.message.match(urlRegex);
-          
-          if (urls && urls.length > 0) {
-            console.log(`Found URLs in XSS payload: ${urls.join(', ')}`);
-            
-            // Actually make the HTTP request to the extracted URL
-            urls.forEach(url => {
-              try {
-                console.log(`Making actual HTTP request to: ${url}`);
-                // Add token as query parameter
-                const requestUrl = url.includes('?') 
-                  ? `${url}&t=${sessionToken}` 
-                  : `${url}?t=${sessionToken}`;
-                  
-                axios.get(requestUrl)
-                  .then(response => console.log(`Successfully sent admin token to: ${url}`))
-                  .catch(error => console.log(`Error sending data to ${url}: ${error.message}`));
-              } catch (error) {
-                console.error(`Failed to make request to ${url}: ${error.message}`);
-              }
-            });
-          }
+      // Log bot token (in a real app, this would be a secret)
+      console.log('Admin bot using token:', sessionToken);
+      
+      // Fetch all messages
+      db.all(`
+        SELECT m.*, u.username 
+        FROM admin_messages m
+        LEFT JOIN users u ON m.user_id = u.id
+        ORDER BY m.date DESC
+      `, (err, messages) => {
+        if (err) {
+          console.error('Admin bot error:', err.message);
+          return;
         }
+        
+        console.log(`Admin bot found ${messages.length} messages to review`);
+        
+        // "Process" each message - in a real browser, this would execute any JavaScript
+        messages.forEach(msg => {
+          console.log(`Admin bot reading message from ${msg.username || 'Unknown'}: ${msg.message.substring(0, 30)}...`);
+          
+          // Check for potentially malicious content
+          if (msg.message.includes('<script>') || msg.message.includes('onerror=') || msg.message.includes('onload=')) {
+            console.log('VULNERABILITY: Admin bot executed JavaScript in message!');
+            console.log('In a real browser, this would allow stealing the JWT token: ' + sessionToken);
+            
+            // Extract URLs from the message (basic extraction for common patterns)
+            const urlRegex = /(https?:\/\/[^\s'"]+)/g;
+            const urls = msg.message.match(urlRegex);
+            
+            if (urls && urls.length > 0) {
+              console.log(`Found URLs in XSS payload: ${urls.join(', ')}`);
+              
+              // Actually make the HTTP request to the extracted URL
+              urls.forEach(url => {
+                try {
+                  console.log(`Making actual HTTP request to: ${url}`);
+                  // Add token as query parameter
+                  const requestUrl = url.includes('?') 
+                    ? `${url}&t=${sessionToken}` 
+                    : `${url}?t=${sessionToken}`;
+                    
+                  axios.get(requestUrl)
+                    .then(response => console.log(`Successfully sent admin token to: ${url}`))
+                    .catch(error => console.log(`Error sending data to ${url}: ${error.message}`));
+                } catch (error) {
+                  console.error(`Failed to make request to ${url}: ${error.message}`);
+                }
+              });
+            }
+          }
+        });
+        
+        console.log('Admin bot finished checking messages');
       });
-      
-      console.log('Admin bot finished checking messages');
     });
   }
   
   // Run immediately on startup
   setTimeout(simulateAdminViewingMessages, 10000); // 10 seconds after server start
   
-  // Then every 5 minutes
-  setInterval(simulateAdminViewingMessages, 5 * 60 * 1000);
+  // Then every 1 minute
+  setInterval(simulateAdminViewingMessages, 1 * 60 * 1000);
 }
 
 // Add a blind second-order SQL injection vulnerability in profile updates
 app.post('/api/users/update-profile', verifyToken, (req, res) => {
   const { bio, website, location } = req.body;
   const userId = req.user.id;
+  
+  // Protect FLAG field from being modified
+  // Only allow specific fields to be updated
   
   // Store user input in the database without sanitization
   const updateQuery = `UPDATE users SET bio = "${bio}", website = "${website}", location = "${location}" WHERE id = ${userId}`;
@@ -707,102 +736,110 @@ db.serialize(() => {
 // This represents a realistic automated admin interface
 // It's vulnerable to stored XSS with capability to steal JWTs and send them to external servers
 function setupHeadlessFeedbackBot() {
-  console.log('Setting up vulnerable headless feedback review bot - runs every 7 minutes');
+  console.log('Setting up vulnerable headless feedback review bot - runs every 2 minutes');
   
   function simulateHeadlessBrowser() {
     console.log('Headless admin browser starting to review feedback...');
     
-    // Generate admin JWT token with extended privileges  
-    const accessToken = jwt.sign(
-      { id: 1, username: 'admin', role: 'admin', privilegeLevel: 'system' },
-      JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-    
-    // In a real implementation, this token would be used for API calls
-    console.log('Headless browser using SYSTEM ADMIN token:', accessToken);
-    
-    // Store token in simulated browser localStorage
-    const browserLocalStorage = {
-      'authToken': accessToken,
-      'adminPreferences': JSON.stringify({
-        'autoApprove': true,
-        'notifyOnUrgent': true,
-        'refreshInterval': 300000
-      }),
-      'adminId': '1',
-      'sessionStarted': new Date().toISOString()
-    };
-    
-    // Fetch all unreviewed feedback
-    db.all(`
-      SELECT * FROM feedback WHERE reviewed = 0 ORDER BY date DESC
-    `, (err, feedbackItems) => {
-      if (err) {
-        console.error('Headless browser error:', err.message);
+    // Get the bot user ID
+    db.get("SELECT id, username, role FROM users WHERE username = 'admin_feedback_bot'", (err, botUser) => {
+      if (err || !botUser) {
+        console.error('Could not find admin feedback bot user:', err ? err.message : 'User not found');
         return;
       }
       
-      console.log(`Headless browser found ${feedbackItems.length} feedback items to review`);
+      // Generate bot JWT token with extended privileges  
+      const accessToken = jwt.sign(
+        { id: botUser.id, username: botUser.username, role: botUser.role, botType: 'feedback_bot', privilegeLevel: 'system' },
+        JWT_SECRET,
+        { expiresIn: '1h' }
+      );
       
-      // Process each feedback entry - simulating a headless browser rendering HTML
-      feedbackItems.forEach(item => {
-        console.log(`Reviewing feedback #${item.id} from ${item.email}`);
+      // In a real implementation, this token would be used for API calls
+      console.log('Headless browser using SYSTEM BOT token:', accessToken);
+      
+      // Store token in simulated browser localStorage
+      const browserLocalStorage = {
+        'authToken': accessToken,
+        'adminPreferences': JSON.stringify({
+          'autoApprove': true,
+          'notifyOnUrgent': true,
+          'refreshInterval': 300000
+        }),
+        'botId': botUser.id.toString(),
+        'sessionStarted': new Date().toISOString()
+      };
+      
+      // Fetch all unreviewed feedback
+      db.all(`
+        SELECT * FROM feedback WHERE reviewed = 0 ORDER BY date DESC
+      `, (err, feedbackItems) => {
+        if (err) {
+          console.error('Headless browser error:', err.message);
+          return;
+        }
         
-        // This is where XSS would occur in a real headless browser
-        // The email and message fields could contain JavaScript that would execute
-        const dangerousFields = [item.email, item.message];
+        console.log(`Headless browser found ${feedbackItems.length} feedback items to review`);
         
-        // Check for potential XSS payloads
-        dangerousFields.forEach(field => {
-          if (field && (
-              field.includes('<script') || 
-              field.includes('javascript:') || 
-              field.includes('onerror=') || 
-              field.includes('onload=')
-          )) {
-            console.log('CRITICAL VULNERABILITY: Headless browser executed JavaScript in feedback!');
-            console.log(`Potential data exposure: ${JSON.stringify(browserLocalStorage)}`);
-            console.log('This could lead to system-level admin token theft and complete compromise');
-            
-            // Extract URLs from the field (basic extraction for common patterns)
-            const urlRegex = /(https?:\/\/[^\s'"]+)/g;
-            const urls = field.match(urlRegex);
-            
-            if (urls && urls.length > 0) {
-              console.log(`Found URLs in feedback XSS payload: ${urls.join(', ')}`);
+        // Process each feedback entry - simulating a headless browser rendering HTML
+        feedbackItems.forEach(item => {
+          console.log(`Reviewing feedback #${item.id} from ${item.email}`);
+          
+          // This is where XSS would occur in a real headless browser
+          // The email and message fields could contain JavaScript that would execute
+          const dangerousFields = [item.email, item.message];
+          
+          // Check for potential XSS payloads
+          dangerousFields.forEach(field => {
+            if (field && (
+                field.includes('<script') || 
+                field.includes('javascript:') || 
+                field.includes('onerror=') || 
+                field.includes('onload=')
+            )) {
+              console.log('CRITICAL VULNERABILITY: Headless browser executed JavaScript in feedback!');
+              console.log(`Potential data exposure: ${JSON.stringify(browserLocalStorage)}`);
+              console.log('This could lead to system-level admin token theft and complete compromise');
               
-              // Actually make the HTTP request to the extracted URL
-              urls.forEach(url => {
-                try {
-                  console.log(`Making actual HTTP request to: ${url}`);
-                  // Add token and localStorage data as query parameters
-                  const requestUrl = url.includes('?') 
-                    ? `${url}&t=${accessToken}&data=${encodeURIComponent(JSON.stringify(browserLocalStorage))}` 
-                    : `${url}?t=${accessToken}&data=${encodeURIComponent(JSON.stringify(browserLocalStorage))}`;
-                    
-                  axios.get(requestUrl)
-                    .then(response => console.log(`Successfully sent admin data to: ${url}`))
-                    .catch(error => console.log(`Error sending data to ${url}: ${error.message}`));
-                } catch (error) {
-                  console.error(`Failed to make request to ${url}: ${error.message}`);
-                }
-              });
+              // Extract URLs from the field (basic extraction for common patterns)
+              const urlRegex = /(https?:\/\/[^\s'"]+)/g;
+              const urls = field.match(urlRegex);
+              
+              if (urls && urls.length > 0) {
+                console.log(`Found URLs in feedback XSS payload: ${urls.join(', ')}`);
+                
+                // Actually make the HTTP request to the extracted URL
+                urls.forEach(url => {
+                  try {
+                    console.log(`Making actual HTTP request to: ${url}`);
+                    // Add token and localStorage data as query parameters
+                    const requestUrl = url.includes('?') 
+                      ? `${url}&t=${accessToken}&data=${encodeURIComponent(JSON.stringify(browserLocalStorage))}` 
+                      : `${url}?t=${accessToken}&data=${encodeURIComponent(JSON.stringify(browserLocalStorage))}`;
+                      
+                    axios.get(requestUrl)
+                      .then(response => console.log(`Successfully sent admin data to: ${url}`))
+                      .catch(error => console.log(`Error sending data to ${url}: ${error.message}`));
+                  } catch (error) {
+                    console.error(`Failed to make request to ${url}: ${error.message}`);
+                  }
+                });
+              }
             }
-          }
+          });
+          
+          // Mark as reviewed
+          db.run(`UPDATE feedback SET reviewed = 1 WHERE id = ${item.id}`);
         });
         
-        // Mark as reviewed
-        db.run(`UPDATE feedback SET reviewed = 1 WHERE id = ${item.id}`);
+        console.log('Headless browser finished reviewing feedback');
       });
-      
-      console.log('Headless browser finished reviewing feedback');
     });
   }
   
-  // Run on a different schedule than the message bot (7 minutes)
+  // Run on a different schedule than the message bot (2 minutes)
   setTimeout(simulateHeadlessBrowser, 15000); // 15 seconds after server start
-  setInterval(simulateHeadlessBrowser, 7 * 60 * 1000); // Every 7 minutes
+  setInterval(simulateHeadlessBrowser, 2 * 60 * 1000); // Every 2 minutes
 }
 
 // Start the server
