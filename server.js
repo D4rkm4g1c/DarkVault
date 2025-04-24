@@ -10,6 +10,23 @@ const multer = require('multer');
 const fs = require('fs');
 const { exec } = require('child_process');
 
+// Create logs directory if it doesn't exist
+if (!fs.existsSync('logs')) {
+  fs.mkdirSync('logs');
+}
+
+// Error logging function
+function logError(location, error, data = {}) {
+  const timestamp = new Date().toISOString();
+  const logEntry = `${timestamp} - ${location} - ${error.message}\nData: ${JSON.stringify(data)}\nStack: ${error.stack}\n\n`;
+  
+  fs.appendFile('logs/error.log', logEntry, (err) => {
+    if (err) console.error('Failed to write to log file:', err);
+  });
+  
+  console.error(`${timestamp} - ${location} - ${error.message}`);
+}
+
 // Insecure JWT secret
 const JWT_SECRET = 'darkvault-super-secret-key';
 
@@ -180,14 +197,20 @@ app.post('/api/login', (req, res) => {
 app.post('/api/register', (req, res) => {
   const { username, password, email } = req.body;
   
+  // Log registration attempt
+  console.log(`Registration attempt: username=${username}, email=${email}`);
+  
   // No validation on inputs
   const query = `INSERT INTO users (username, password, email) VALUES ('${username}', '${password}', '${email}')`;
   
   db.run(query, function(err) {
     if (err) {
+      // Log the detailed error
+      logError('Registration', err, { username, email, query });
       return res.status(500).json({ error: err.message });
     }
     
+    console.log(`User registered successfully: username=${username}, userId=${this.lastID}`);
     return res.status(201).json({
       success: true,
       message: 'User registered successfully',
@@ -415,9 +438,23 @@ app.get('/api/transactions', verifyToken, (req, res) => {
   });
 });
 
+// Add error handling middleware at the end of the file, before app.listen
+// Error handling middleware
+app.use((err, req, res, next) => {
+  logError('Global Error Handler', err, { 
+    path: req.path, 
+    method: req.method, 
+    body: req.body, 
+    query: req.query 
+  });
+  
+  res.status(500).json({ error: 'An internal server error occurred' });
+});
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`DarkVault app running on port ${PORT}`);
   console.log(`WARNING: This application contains intentional security vulnerabilities!`);
   console.log(`It is intended for educational purposes only.`);
+  console.log(`Error logs will be written to logs/error.log`);
 }); 
