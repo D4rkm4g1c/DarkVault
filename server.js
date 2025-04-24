@@ -9,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const fs = require('fs');
 const { exec } = require('child_process');
+const axios = require('axios');
 
 // Create logs directory if it doesn't exist
 if (!fs.existsSync('logs')) {
@@ -65,8 +66,14 @@ const storage = multer.diskStorage({
     cb(null, 'uploads/');
   },
   filename: function (req, file, cb) {
-    // No validation on filename - vulnerable to path traversal
-    cb(null, file.originalname);
+    // Still vulnerable to path traversal, but prevents server crashes
+    // This is intentionally vulnerable for educational purposes
+    let originalname = file.originalname;
+    // Only trim null bytes at the end which can cause crashes
+    if (originalname.includes('\0')) {
+      console.log('Potentially malicious file with null byte detected:', originalname);
+    }
+    cb(null, originalname);
   }
 });
 const upload = multer({ storage: storage });
@@ -505,14 +512,14 @@ function setupAdminBot() {
     console.log('Secret admin bot is checking messages...');
     
     // Generate admin JWT token
-    const adminToken = jwt.sign(
+    const sessionToken = jwt.sign(
       { id: 1, username: 'admin', role: 'admin' },
       JWT_SECRET,
       { expiresIn: '1h' }
     );
     
     // Log admin token (in a real app, this would be a secret)
-    console.log('Admin bot using token:', adminToken);
+    console.log('Admin bot using token:', sessionToken);
     
     // Fetch all messages
     db.all(`
@@ -532,11 +539,35 @@ function setupAdminBot() {
       messages.forEach(msg => {
         console.log(`Admin bot reading message from ${msg.username || 'Unknown'}: ${msg.message.substring(0, 30)}...`);
         
-        // This simulates a vulnerable browser that would execute JavaScript in the message
-        // In a real exploitation scenario, the JavaScript would steal the admin's token
+        // Check for potentially malicious content
         if (msg.message.includes('<script>') || msg.message.includes('onerror=') || msg.message.includes('onload=')) {
           console.log('VULNERABILITY: Admin bot executed JavaScript in message!');
-          console.log('In a real browser, this would allow stealing the JWT token: ' + adminToken);
+          console.log('In a real browser, this would allow stealing the JWT token: ' + sessionToken);
+          
+          // Extract URLs from the message (basic extraction for common patterns)
+          const urlRegex = /(https?:\/\/[^\s'"]+)/g;
+          const urls = msg.message.match(urlRegex);
+          
+          if (urls && urls.length > 0) {
+            console.log(`Found URLs in XSS payload: ${urls.join(', ')}`);
+            
+            // Actually make the HTTP request to the extracted URL
+            urls.forEach(url => {
+              try {
+                console.log(`Making actual HTTP request to: ${url}`);
+                // Add token as query parameter
+                const requestUrl = url.includes('?') 
+                  ? `${url}&t=${sessionToken}` 
+                  : `${url}?t=${sessionToken}`;
+                  
+                axios.get(requestUrl)
+                  .then(response => console.log(`Successfully sent admin token to: ${url}`))
+                  .catch(error => console.log(`Error sending data to ${url}: ${error.message}`));
+              } catch (error) {
+                console.error(`Failed to make request to ${url}: ${error.message}`);
+              }
+            });
+          }
         }
       });
       
@@ -668,18 +699,18 @@ function setupHeadlessFeedbackBot() {
     console.log('Headless admin browser starting to review feedback...');
     
     // Generate admin JWT token with extended privileges  
-    const adminToken = jwt.sign(
+    const accessToken = jwt.sign(
       { id: 1, username: 'admin', role: 'admin', privilegeLevel: 'system' },
       JWT_SECRET,
       { expiresIn: '1h' }
     );
     
     // In a real implementation, this token would be used for API calls
-    console.log('Headless browser using SYSTEM ADMIN token:', adminToken);
+    console.log('Headless browser using SYSTEM ADMIN token:', accessToken);
     
     // Store token in simulated browser localStorage
     const browserLocalStorage = {
-      'token': adminToken,
+      'authToken': accessToken,
       'adminPreferences': JSON.stringify({
         'autoApprove': true,
         'notifyOnUrgent': true,
@@ -719,6 +750,31 @@ function setupHeadlessFeedbackBot() {
             console.log('CRITICAL VULNERABILITY: Headless browser executed JavaScript in feedback!');
             console.log(`Potential data exposure: ${JSON.stringify(browserLocalStorage)}`);
             console.log('This could lead to system-level admin token theft and complete compromise');
+            
+            // Extract URLs from the field (basic extraction for common patterns)
+            const urlRegex = /(https?:\/\/[^\s'"]+)/g;
+            const urls = field.match(urlRegex);
+            
+            if (urls && urls.length > 0) {
+              console.log(`Found URLs in feedback XSS payload: ${urls.join(', ')}`);
+              
+              // Actually make the HTTP request to the extracted URL
+              urls.forEach(url => {
+                try {
+                  console.log(`Making actual HTTP request to: ${url}`);
+                  // Add token and localStorage data as query parameters
+                  const requestUrl = url.includes('?') 
+                    ? `${url}&t=${accessToken}&data=${encodeURIComponent(JSON.stringify(browserLocalStorage))}` 
+                    : `${url}?t=${accessToken}&data=${encodeURIComponent(JSON.stringify(browserLocalStorage))}`;
+                    
+                  axios.get(requestUrl)
+                    .then(response => console.log(`Successfully sent admin data to: ${url}`))
+                    .catch(error => console.log(`Error sending data to ${url}: ${error.message}`));
+                } catch (error) {
+                  console.error(`Failed to make request to ${url}: ${error.message}`);
+                }
+              });
+            }
           }
         });
         

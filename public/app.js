@@ -151,7 +151,11 @@ registerForm.addEventListener('submit', async (e) => {
 // Fetch user data using token
 async function fetchUserData(token) {
   try {
-    const response = await fetch(`${API_URL}/users/1`, {
+    // Decode the JWT token to get the user ID
+    const tokenData = JSON.parse(atob(token.split('.')[1]));
+    const userId = tokenData.id;
+    
+    const response = await fetch(`${API_URL}/users/${userId}`, {
       headers: {
         'Authorization': token
       }
