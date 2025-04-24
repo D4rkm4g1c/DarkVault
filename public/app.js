@@ -115,11 +115,15 @@ loginForm.addEventListener('submit', async (e) => {
       currentUser = data.user;
       showLoggedInState();
     } else {
-      alert(data.message);
+      alert(data.message || 'Login failed. Please check your credentials.');
     }
   } catch (error) {
     console.error('Login error:', error);
-    alert('An error occurred during login');
+    // Only show error alert if we have a genuine network/parsing error
+    // and authentication hasn't already succeeded
+    if (!localStorage.getItem('token')) {
+      alert('An error occurred during login. Please try again.');
+    }
   }
 });
 
@@ -235,10 +239,10 @@ function showLoggedInState() {
     // Show/hide admin section based on user role
     if (currentUser.role === 'admin') {
       adminSection.style.display = 'block';
-      document.getElementById('nav-admin').parentElement.style.display = 'block';
+      document.getElementById('admin-nav-item').style.display = 'block';
     } else {
       adminSection.style.display = 'none';
-      document.getElementById('nav-admin').parentElement.style.display = 'none';
+      document.getElementById('admin-nav-item').style.display = 'none';
     }
     
     // If there are bot secrets, display them in the profile
@@ -561,45 +565,6 @@ btnSearch.addEventListener('click', async () => {
   }
 });
 
-// Upload file
-btnUploadSubmit.addEventListener('click', async () => {
-  const file = uploadFile.files[0];
-  
-  if (!file) {
-    alert('Please select a file to upload');
-    return;
-  }
-  
-  const token = localStorage.getItem('token');
-  if (!token) return;
-  
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  try {
-    const response = await fetch(`${API_URL}/upload`, {
-      method: 'POST',
-      headers: {
-        'Authorization': token
-      },
-      body: formData
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      alert(`File uploaded successfully! Path: ${data.file_path}`);
-      uploadModal.hide();
-      uploadFile.value = '';
-    } else {
-      alert(data.message || 'Upload failed');
-    }
-  } catch (error) {
-    console.error('Upload error:', error);
-    alert('An error occurred during upload');
-  }
-});
-
 // Admin: Export Users
 if (btnExportUsers) {
   btnExportUsers.addEventListener('click', async () => {
@@ -668,7 +633,8 @@ if (btnRunReport) {
     if (!token) return;
     
     try {
-      const response = await fetch(`${API_URL}/admin/run-report`, {
+      // Use the correct endpoint path that matches the server's implementation
+      const response = await fetch(`${API_URL}/admin/report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -680,16 +646,13 @@ if (btnRunReport) {
       const data = await response.json();
       
       if (response.ok) {
-        document.getElementById('report-result').innerHTML = 
-          `<div class="alert alert-success">Report generated successfully!<br>Output: <pre class="mb-0 mt-2">${data.output}</pre></div>`;
+        alert(`Report generated successfully!\nOutput: ${data.output}`);
       } else {
-        document.getElementById('report-result').innerHTML = 
-          `<div class="alert alert-danger">${data.error || 'Failed to generate report'}</div>`;
+        alert(data.error || 'Failed to generate report');
       }
     } catch (error) {
       console.error('Report error:', error);
-      document.getElementById('report-result').innerHTML = 
-        `<div class="alert alert-danger">An error occurred while generating report</div>`;
+      alert('An error occurred while generating report');
     }
   });
 }
@@ -922,4 +885,43 @@ async function checkExploitProgress() {
 // Refresh exploit progress when button is clicked
 if (btnCheckProgress) {
   btnCheckProgress.addEventListener('click', checkExploitProgress);
-} 
+}
+
+// Upload file
+btnUploadSubmit.addEventListener('click', async () => {
+  const file = uploadFile.files[0];
+  
+  if (!file) {
+    alert('Please select a file to upload');
+    return;
+  }
+  
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    const response = await fetch(`${API_URL}/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': token
+      },
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      alert(`File uploaded successfully! Path: ${data.file_path}`);
+      uploadModal.hide();
+      uploadFile.value = '';
+    } else {
+      alert(data.message || 'Upload failed');
+    }
+  } catch (error) {
+    console.error('Upload error:', error);
+    alert('An error occurred during upload');
+  }
+}); 
