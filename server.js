@@ -373,11 +373,16 @@ function loadExploitChainProgress(req, res, next) {
       req.user.exploitStage = 'not_started';
       req.user.discoveredSecrets = {};
       
-      // Create a new record for this user
+      // Create a new record for this user - using INSERT OR REPLACE to prevent unique constraint errors
       const now = new Date().toISOString();
       db.run(
-        `INSERT INTO exploit_chain (user_id, stage, discovered_secrets, last_updated) VALUES (?, ?, ?, ?)`,
-        [req.user.id, 'not_started', '{}', now]
+        `INSERT OR REPLACE INTO exploit_chain (user_id, stage, discovered_secrets, last_updated) VALUES (?, ?, ?, ?)`,
+        [req.user.id, 'not_started', '{}', now],
+        (err) => {
+          if (err) {
+            console.error('Error creating exploit chain record:', err);
+          }
+        }
       );
     }
     
@@ -395,7 +400,12 @@ function loadExploitChainProgress(req, res, next) {
       const now = new Date().toISOString();
       db.run(
         `UPDATE exploit_chain SET stage = ?, discovered_secrets = ?, last_updated = ? WHERE user_id = ?`,
-        [newStage, JSON.stringify(req.user.discoveredSecrets), now, req.user.id]
+        [newStage, JSON.stringify(req.user.discoveredSecrets), now, req.user.id],
+        (err) => {
+          if (err) {
+            console.error('Error updating exploit chain:', err);
+          }
+        }
       );
     };
     
