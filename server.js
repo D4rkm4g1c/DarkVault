@@ -11,6 +11,7 @@ const axios = require('axios');
 const cookieParser = require('cookie-parser');
 const os = require('os');
 const UglifyJS = require('uglify-js');
+const crypto = require('crypto');
 
 // Create logs directory if it doesn't exist
 if (!fs.existsSync('logs')) {
@@ -263,119 +264,136 @@ function setupDatabase() {
           }
           console.log('Exploit chain table created successfully');
           
-          // Create secrets table
-          db.run(`CREATE TABLE IF NOT EXISTS secrets (
+          // Create leaderboard table
+          db.run(`CREATE TABLE IF NOT EXISTS leaderboard (
             id INTEGER PRIMARY KEY,
-            key_name TEXT UNIQUE,
-            key_value TEXT
+            system_id TEXT UNIQUE,
+            username TEXT,
+            score INTEGER DEFAULT 0,
+            completed_vulns TEXT DEFAULT '{}',
+            last_updated TEXT,
+            first_seen TEXT
           )`, function(err) {
             if (err) {
-              console.error('Error creating secrets table:', err.message);
+              console.error('Error creating leaderboard table:', err.message);
               return;
             }
-            console.log('Secrets table created successfully');
+            console.log('Leaderboard table created successfully');
             
-            // Insert initial secrets
-            db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
-              if (!row) {
-                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_key')");
-                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('advanced_chain_key', 'chain_9a74c8')");
-                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'access')");
-                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_token')");
-              }
-            });
-            
-            // Create themes table
-            db.run(`CREATE TABLE IF NOT EXISTS themes (
+            // Create secrets table
+            db.run(`CREATE TABLE IF NOT EXISTS secrets (
               id INTEGER PRIMARY KEY,
-              name TEXT UNIQUE,
-              description TEXT,
-              custom_css TEXT
+              key_name TEXT UNIQUE,
+              key_value TEXT
             )`, function(err) {
               if (err) {
-                console.error('Error creating themes table:', err.message);
+                console.error('Error creating secrets table:', err.message);
                 return;
               }
+              console.log('Secrets table created successfully');
               
-              // Insert default themes
-              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('default', 'Default theme', 'body { background-color: white; }')");
-              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('dark', 'Dark theme', 'body { background-color: #222; color: #eee; }')");
-              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('light', 'Light theme', 'body { background-color: #f8f9fa; }')");
-              console.log('Themes table created and populated');
+              // Insert initial secrets
+              db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
+                if (!row) {
+                  db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_key')");
+                  db.run("INSERT INTO secrets (key_name, key_value) VALUES ('advanced_chain_key', 'chain_9a74c8')");
+                  db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'access')");
+                  db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_token')");
+                }
+              });
               
-              // Create user_settings table
-              db.run(`CREATE TABLE IF NOT EXISTS user_settings (
-                user_id INTEGER PRIMARY KEY,
-                settings TEXT
+              // Create themes table
+              db.run(`CREATE TABLE IF NOT EXISTS themes (
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE,
+                description TEXT,
+                custom_css TEXT
               )`, function(err) {
                 if (err) {
-                  console.error('Error creating user_settings table:', err.message);
+                  console.error('Error creating themes table:', err.message);
                   return;
                 }
-                console.log('User settings table created');
                 
-                // Create profile_updates table
-                db.run(`CREATE TABLE IF NOT EXISTS profile_updates (
-                  id INTEGER PRIMARY KEY,
-                  user_id INTEGER,
-                  field TEXT,
-                  old_value TEXT,
-                  new_value TEXT,
-                  date TEXT
+                // Insert default themes
+                db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('default', 'Default theme', 'body { background-color: white; }')");
+                db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('dark', 'Dark theme', 'body { background-color: #222; color: #eee; }')");
+                db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('light', 'Light theme', 'body { background-color: #f8f9fa; }')");
+                console.log('Themes table created and populated');
+                
+                // Create user_settings table
+                db.run(`CREATE TABLE IF NOT EXISTS user_settings (
+                  user_id INTEGER PRIMARY KEY,
+                  settings TEXT
                 )`, function(err) {
                   if (err) {
-                    console.error('Error creating profile_updates table:', err.message);
+                    console.error('Error creating user_settings table:', err.message);
                     return;
                   }
-                  console.log('Profile updates table created');
+                  console.log('User settings table created');
                   
-                  // Create feedback table
-                  db.run(`CREATE TABLE IF NOT EXISTS feedback (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT,
-                    message TEXT,
-                    rating INTEGER,
-                    date TEXT,
-                    reviewed INTEGER DEFAULT 0
+                  // Create profile_updates table
+                  db.run(`CREATE TABLE IF NOT EXISTS profile_updates (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER,
+                    field TEXT,
+                    old_value TEXT,
+                    new_value TEXT,
+                    date TEXT
                   )`, function(err) {
                     if (err) {
-                      console.error('Error creating feedback table:', err.message);
+                      console.error('Error creating profile_updates table:', err.message);
                       return;
                     }
-                    console.log('Feedback table created');
+                    console.log('Profile updates table created');
                     
-                    // Check if there are any users in the database first
-                    db.get("SELECT COUNT(*) as count FROM users", (err, result) => {
+                    // Create feedback table
+                    db.run(`CREATE TABLE IF NOT EXISTS feedback (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      email TEXT,
+                      message TEXT,
+                      rating INTEGER,
+                      date TEXT,
+                      reviewed INTEGER DEFAULT 0
+                    )`, function(err) {
                       if (err) {
-                        console.error('Error checking users table:', err.message);
+                        console.error('Error creating feedback table:', err.message);
                         return;
                       }
+                      console.log('Feedback table created');
                       
-                      // Only insert users if the users table is empty
-                      if (result.count === 0) {
-                        console.log('Users table is empty, creating default users');
+                      // Check if there are any users in the database first
+                      db.get("SELECT COUNT(*) as count FROM users", (err, result) => {
+                        if (err) {
+                          console.error('Error checking users table:', err.message);
+                          return;
+                        }
                         
-                        // Insert admin user
-                        db.run("INSERT INTO users (username, password, email, role, balance) VALUES ('admin', 'admin123', 'admin@darkvault.com', 'admin', 9999.99)");
-                        console.log('Admin user created');
-                        
-                        // Insert only one regular user for testing
-                        const user = { username: 'alice', password: 'password123', email: 'alice@example.com', role: 'user' };
-                        db.run("INSERT INTO users (username, password, email, role, balance) VALUES (?, ?, ?, ?, ?)",
-                          [user.username, user.password, user.email, user.role, 1000.0],
-                          function(err) {
-                            if (err) {
-                              console.error(`Error creating user ${user.username}:`, err.message);
-                            } else {
-                              console.log(`User ${user.username} created`);
+                        // Only insert users if the users table is empty
+                        if (result.count === 0) {
+                          console.log('Users table is empty, creating default users');
+                          
+                          // Insert admin user
+                          db.run("INSERT INTO users (username, password, email, role, balance) VALUES ('admin', 'admin123', 'admin@darkvault.com', 'admin', 9999.99)");
+                          console.log('Admin user created');
+                          
+                          // Insert only one regular user for testing
+                          const user = { username: 'alice', password: 'password123', email: 'alice@example.com', role: 'user' };
+                          db.run("INSERT INTO users (username, password, email, role, balance) VALUES (?, ?, ?, ?, ?)",
+                            [user.username, user.password, user.email, user.role, 1000.0],
+                            function(err) {
+                              if (err) {
+                                console.error(`Error creating user ${user.username}:`, err.message);
+                              } else {
+                                console.log(`User ${user.username} created`);
+                              }
+                              console.log('Database setup completed successfully');
                             }
-                            console.log('Database setup completed successfully');
-                          }
-                        );
-                      } else {
-                        console.log('Users already exist in the database, skipping user creation');
-                        console.log('Database setup completed successfully');
-                      }
+                          );
+                        } else {
+                          console.log('Users already exist in the database, skipping user creation');
+                          console.log('Database setup completed successfully');
+                        }
+                      });
                     });
                   });
                 });
@@ -396,6 +414,70 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} [${req.method}] ${req.url} - Body:`, req.body);
   next();
 });
+
+// At the top of the file, add a helper to generate system IDs
+function generateSystemId(req) {
+  // Use a combination of IP, user agent, and a server secret to make it harder to spoof
+  const ipAddress = req.ip || req.connection.remoteAddress;
+  const userAgent = req.headers['user-agent'] || '';
+  const serverSecret = 'darkVault-unique-identifier-salt';
+  
+  const dataToHash = `${ipAddress}|${userAgent}|${serverSecret}`;
+  return crypto.createHash('sha256').update(dataToHash).digest('hex');
+}
+
+// Middleware to handle system ID verification and tracking
+function trackSystem(req, res, next) {
+  // Get or create a unique system ID
+  const clientSystemId = req.cookies?.system_id;
+  const generatedSystemId = generateSystemId(req);
+  
+  // Combine both for stronger identification - client provided + server calculated
+  let combinedSystemId;
+  
+  if (clientSystemId) {
+    // If client has a system ID cookie, use a combination
+    combinedSystemId = crypto.createHash('sha256')
+      .update(`${clientSystemId}|${generatedSystemId}`)
+      .digest('hex');
+    
+    // Attach system ID to the request for later use
+    req.systemId = combinedSystemId;
+    next();
+  } else {
+    // If no client ID yet, generate one and set cookie
+    const newClientId = crypto.randomUUID();
+    combinedSystemId = crypto.createHash('sha256')
+      .update(`${newClientId}|${generatedSystemId}`)
+      .digest('hex');
+    
+    // Set a long-lived cookie
+    res.cookie('system_id', newClientId, {
+      maxAge: 10 * 365 * 24 * 60 * 60 * 1000, // 10 years
+      httpOnly: true,
+      sameSite: 'strict'
+    });
+    
+    // Register this system ID in the leaderboard
+    const now = new Date().toISOString();
+    db.run(
+      'INSERT OR IGNORE INTO leaderboard (system_id, score, completed_vulns, last_updated, first_seen) VALUES (?, 0, ?, ?, ?)',
+      [combinedSystemId, '{}', now, now],
+      (err) => {
+        if (err) {
+          console.error('Error registering system in leaderboard:', err.message);
+        }
+        
+        // Attach system ID to the request for later use
+        req.systemId = combinedSystemId;
+        next();
+      }
+    );
+  }
+}
+
+// Add the middleware after cookie parsing
+app.use(trackSystem);
 
 // --- Vulnerable Endpoints ---
 
@@ -634,6 +716,43 @@ function loadExploitChainProgress(req, res, next) {
             );
           };
           
+          // Add a method to record additional exploited vulnerabilities
+          req.user.recordVulnerability = function(vulnType, details = {}) {
+            const now = new Date().toISOString();
+            
+            if (!req.user.discoveredSecrets) {
+              req.user.discoveredSecrets = {};
+            }
+            
+            if (!req.user.discoveredSecrets.vulnerabilities) {
+              req.user.discoveredSecrets.vulnerabilities = {};
+            }
+            
+            // Record this vulnerability with timestamp and details
+            req.user.discoveredSecrets.vulnerabilities[vulnType] = {
+              discovered: now,
+              details: details
+            };
+            
+            // Update in database
+            db.run(
+              'UPDATE exploit_chain SET discovered_secrets = ?, last_updated = ? WHERE user_id = ?',
+              [JSON.stringify(req.user.discoveredSecrets || {}), now, userId],
+              function(err) {
+                if (err) {
+                  console.error('Error updating exploit discoveries:', err.message);
+                }
+              }
+            );
+            
+            // Also update the leaderboard if we have a system ID
+            if (req.systemId) {
+              updateLeaderboard(req.systemId, req.user.username, vulnType, details);
+            }
+            
+            return true;
+          };
+          
           next();
         }
       );
@@ -683,6 +802,43 @@ function loadExploitChainProgress(req, res, next) {
             }
           }
         );
+      };
+      
+      // Add a method to record additional exploited vulnerabilities
+      req.user.recordVulnerability = function(vulnType, details = {}) {
+        const now = new Date().toISOString();
+        
+        if (!req.user.discoveredSecrets) {
+          req.user.discoveredSecrets = {};
+        }
+        
+        if (!req.user.discoveredSecrets.vulnerabilities) {
+          req.user.discoveredSecrets.vulnerabilities = {};
+        }
+        
+        // Record this vulnerability with timestamp and details
+        req.user.discoveredSecrets.vulnerabilities[vulnType] = {
+          discovered: now,
+          details: details
+        };
+        
+        // Update in database
+        db.run(
+          'UPDATE exploit_chain SET discovered_secrets = ?, last_updated = ? WHERE user_id = ?',
+          [JSON.stringify(req.user.discoveredSecrets || {}), now, userId],
+          function(err) {
+            if (err) {
+              console.error('Error updating exploit discoveries:', err.message);
+            }
+          }
+        );
+        
+        // Also update the leaderboard if we have a system ID
+        if (req.systemId) {
+          updateLeaderboard(req.systemId, req.user.username, vulnType, details);
+        }
+        
+        return true;
       };
       
       next();
@@ -1241,7 +1397,15 @@ app.get('/api/exploit-status', verifyToken, (req, res) => {
       nextStage = 'command_success';
       break;
     case 'command_success':
-      hint = 'You\'ve completed the main exploit chain! Now try other vulnerabilities like JWT manipulation, prototype pollution, and cookie-based SQL injection.';
+      hint = 'You\'ve completed the main exploit chain! Now explore these additional vulnerabilities:\n' +
+             '- JWT manipulation: Try modifying your JWT token\n' +
+             '- Cookie-based SQL injection: Check the theme cookie in /api/user-preferences\n' +
+             '- DOM-based XSS: Visit the /api/documentation endpoint\n' +
+             '- CSRF vulnerability: See how /api/update-email lacks protection\n' +
+             '- Prototype pollution: Try /api/merge-settings with crafted JSON\n' +
+             '- Second-order SQL injection: Update your profile location field\n' +
+             '- Race condition: Make concurrent requests to /api/quick-transfer\n' +
+             '- SSRF: Use the /api/proxy endpoint';
       nextStage = 'complete';
       break;
     default:
@@ -1249,12 +1413,29 @@ app.get('/api/exploit-status', verifyToken, (req, res) => {
       nextStage = '';
   }
   
+  // Add full list of available vulnerabilities for reference
+  const availableVulnerabilities = [
+    'SQL Injection',
+    'Insecure Direct Object Reference (IDOR)',
+    'File Upload Vulnerabilities',
+    'Command Injection',
+    'JWT Token Manipulation',
+    'Cookie-based SQL Injection',
+    'DOM-based XSS',
+    'CSRF (Cross-Site Request Forgery)',
+    'Prototype Pollution',
+    'Second-order SQL Injection',
+    'Race Condition',
+    'SSRF (Server-Side Request Forgery)'
+  ];
+  
   res.status(200).json({
     status: currentStage,
     nextStage: nextStage,
     hint: hint,
     completion: completion,
-    discoveredSecrets: req.user.discoveredSecrets || {}
+    discoveredSecrets: req.user.discoveredSecrets || {},
+    availableVulnerabilities: availableVulnerabilities
   });
 });
 
@@ -1297,10 +1478,40 @@ app.get('/api/user-preferences', verifyToken, (req, res) => {
     if (err) {
       // Suppresses the error but logs it - making this blind
       console.error('Error in theme loading:', err.message);
+      
+      // Check if this might be a SQL injection attempt
+      if (err.message.includes('syntax') && (theme.includes("'") || theme.includes('"') || theme.includes('--'))) {
+        console.log('Potential SQL injection detected in theme cookie');
+        
+        // Record the exploitation if user is authenticated
+        if (req.user && req.user.recordVulnerability) {
+          req.user.recordVulnerability('cookie_sqli', {
+            payload: theme,
+            error: err.message
+          });
+        }
+      }
+      
       return res.status(200).json({ 
         theme: 'default',
         message: 'Error loading theme, using default'
       });
+    }
+    
+    // Check for potential SQL injection based on suspicious result patterns
+    if (themes && themes.length > 0 && themes.some(row => 
+      // Check if we have unexpected columns that might indicate UNION-based injection
+      Object.keys(row).some(key => !['id', 'name', 'description', 'custom_css'].includes(key))
+    )) {
+      console.log('Potential SQLi success detected via result inspection');
+      
+      // Record the exploitation if user is authenticated
+      if (req.user && req.user.recordVulnerability) {
+        req.user.recordVulnerability('cookie_sqli_success', {
+          payload: theme,
+          columns: themes.length > 0 ? Object.keys(themes[0]) : []
+        });
+      }
     }
     
     // Success response
@@ -1314,6 +1525,23 @@ app.get('/api/user-preferences', verifyToken, (req, res) => {
 
 // DOM-based XSS vulnerability - PRESERVED BY DESIGN
 app.get('/api/documentation', verifyToken, (req, res) => {
+  // Record potential attempts to exploit XSS via URL fragment
+  const referer = req.headers.referer || '';
+  if (referer.includes('#') && 
+      (referer.includes('<script') || 
+       referer.includes('javascript:') || 
+       referer.includes('onerror=') || 
+       referer.includes('onload='))) {
+    console.log('Potential DOM XSS attempt detected in referer:', referer);
+    
+    // Record the exploitation if user is authenticated
+    if (req.user && req.user.recordVulnerability) {
+      req.user.recordVulnerability('dom_xss', {
+        payload: referer.substring(referer.indexOf('#') + 1)
+      });
+    }
+  }
+  
   // Send HTML with JavaScript that uses fragment identifier (hash)
   // This is vulnerable to DOM-based XSS via the URL fragment
   // Example: /api/documentation#<img src=x onerror=alert(document.cookie)>
@@ -1333,6 +1561,21 @@ app.get('/api/documentation', verifyToken, (req, res) => {
             // This is vulnerable - directly writing the hash to innerHTML
             document.getElementById('section-title').innerHTML = 'Section: ' + section;
             document.getElementById('content').innerHTML = 'Loading content for ' + section + '...';
+            
+            // Add detection and reporting of XSS attempts
+            if (section.includes('<script') || 
+                section.includes('javascript:') || 
+                section.includes('onerror=') || 
+                section.includes('onload=')) {
+              // Send an AJAX request to record the exploitation
+              var xhr = new XMLHttpRequest();
+              xhr.open('POST', '/api/record-vulnerability', true);
+              xhr.setRequestHeader('Content-Type', 'application/json');
+              xhr.send(JSON.stringify({
+                type: 'dom_xss_executed',
+                payload: section
+              }));
+            }
           }
         };
       </script>
@@ -1350,6 +1593,24 @@ app.get('/api/documentation', verifyToken, (req, res) => {
   
   res.setHeader('Content-Type', 'text/html');
   return res.status(200).send(htmlContent);
+});
+
+// Endpoint to record vulnerability exploitation from client-side
+app.post('/api/record-vulnerability', verifyToken, (req, res) => {
+  const { type, payload } = req.body;
+  
+  if (!type) {
+    return res.status(400).json({ error: 'Missing vulnerability type' });
+  }
+  
+  // Record the vulnerability
+  if (req.user && req.user.recordVulnerability) {
+    req.user.recordVulnerability(type, { payload });
+    console.log(`Recorded vulnerability exploitation: ${type}`);
+  }
+  
+  // Return empty response to avoid leaking information
+  return res.status(204).end();
 });
 
 // CSRF vulnerability for email updates - PRESERVED BY DESIGN
@@ -1464,6 +1725,22 @@ app.post('/api/merge-settings', verifyToken, (req, res) => {
   
   console.log('Merging user settings:', userSettings);
   
+  // Check for potential prototype pollution attempts
+  const hasPrototypePaths = Object.keys(userSettings).some(key => 
+    key === '__proto__' || key === 'constructor' || key === 'prototype'
+  );
+  
+  if (hasPrototypePaths) {
+    console.log('Potential prototype pollution attempt detected');
+    
+    // Record the exploitation if user is authenticated
+    if (req.user && req.user.recordVulnerability) {
+      req.user.recordVulnerability('prototype_pollution_attempt', {
+        payload: JSON.stringify(userSettings)
+      });
+    }
+  }
+  
   // Get current user settings from database
   db.get('SELECT settings FROM user_settings WHERE user_id = ?', [req.user.id], (err, row) => {
     let currentSettings = {};
@@ -1518,6 +1795,19 @@ app.get('/api/check-admin', verifyToken, (req, res) => {
   // VULNERABLE BY DESIGN: This endpoint is affected by prototype pollution
   // If Object.prototype.isAdmin has been polluted, this will return true
   const isAdmin = req.user.role === 'admin' || {};  // The empty object can be polluted
+  
+  // Check if the user might have successfully exploited prototype pollution
+  if (isAdmin && req.user.role !== 'admin') {
+    console.log('Potential successful prototype pollution detected - non-admin user appears as admin');
+    
+    // Record the exploitation if user is authenticated
+    if (req.user && req.user.recordVulnerability) {
+      req.user.recordVulnerability('prototype_pollution_success', {
+        username: req.user.username,
+        role: req.user.role
+      });
+    }
+  }
   
   return res.status(200).json({
     admin: isAdmin,
@@ -1616,10 +1906,476 @@ app.post('/api/theme-form-submit', (req, res) => {
 // SSRF vulnerability - ENHANCED BY DESIGN
 // ... existing code ...
 
+// Add a helper function to update leaderboard scores
+function updateLeaderboard(systemId, username, vulnType, vulnDetails = {}) {
+  if (!systemId) return false;
+  
+  const now = new Date().toISOString();
+  
+  // Get current leaderboard entry
+  db.get('SELECT * FROM leaderboard WHERE system_id = ?', [systemId], (err, row) => {
+    if (err) {
+      console.error('Error getting leaderboard entry:', err.message);
+      return false;
+    }
+    
+    if (!row) {
+      // Create new entry if it doesn't exist
+      const initialCompleted = {};
+      initialCompleted[vulnType] = {
+        discovered: now,
+        details: vulnDetails
+      };
+      
+      db.run(
+        'INSERT INTO leaderboard (system_id, username, score, completed_vulns, last_updated, first_seen) VALUES (?, ?, 1, ?, ?, ?)',
+        [systemId, username || 'Anonymous', JSON.stringify(initialCompleted), now, now],
+        (err) => {
+          if (err) {
+            console.error('Error creating leaderboard entry:', err.message);
+          }
+        }
+      );
+    } else {
+      // Update existing entry
+      let completedVulns = {};
+      try {
+        completedVulns = JSON.parse(row.completed_vulns);
+      } catch (e) {
+        console.error('Error parsing completed vulnerabilities:', e);
+        completedVulns = {};
+      }
+      
+      // Only update if this vulnerability hasn't been recorded yet
+      if (!completedVulns[vulnType]) {
+        completedVulns[vulnType] = {
+          discovered: now,
+          details: vulnDetails
+        };
+        
+        // Calculate new score - more points for advanced vulns
+        let pointValue = 1; // Default
+        if (vulnType.includes('sql') || vulnType.includes('sqli')) pointValue = 2;
+        if (vulnType.includes('xss')) pointValue = 2;
+        if (vulnType.includes('csrf')) pointValue = 1;
+        if (vulnType.includes('idor')) pointValue = 3;
+        if (vulnType.includes('command')) pointValue = 5;
+        if (vulnType.includes('upload')) pointValue = 4;
+        if (vulnType.includes('prototype_pollution')) pointValue = 3;
+        if (vulnType.includes('jwt')) pointValue = 4;
+        if (vulnType.includes('ssrf')) pointValue = 4;
+        if (vulnType.includes('race')) pointValue = 3;
+        
+        // Add success bonus
+        if (vulnType.includes('success')) pointValue *= 2;
+        
+        const newScore = row.score + pointValue;
+        const username = row.username || 'Anonymous';
+        
+        // Update the entry
+        db.run(
+          'UPDATE leaderboard SET score = ?, username = ?, completed_vulns = ?, last_updated = ? WHERE system_id = ?',
+          [newScore, username, JSON.stringify(completedVulns), now, systemId],
+          (err) => {
+            if (err) {
+              console.error('Error updating leaderboard:', err.message);
+            }
+          }
+        );
+      }
+    }
+  });
+  
+  return true;
+}
+
+// Add a leaderboard endpoint
+app.get('/api/leaderboard', (req, res) => {
+  // Get the top 10 scores
+  db.all(`
+    SELECT username, score, completed_vulns, last_updated 
+    FROM leaderboard 
+    ORDER BY score DESC, last_updated ASC
+    LIMIT 10
+  `, (err, rows) => {
+    if (err) {
+      console.error('Error fetching leaderboard:', err.message);
+      return res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+    
+    // Get current user's position if authenticated
+    let userPosition = null;
+    
+    if (req.systemId) {
+      db.get(`
+        SELECT COUNT(*) as position
+        FROM leaderboard
+        WHERE score > (SELECT score FROM leaderboard WHERE system_id = ?)
+      `, [req.systemId], (err, result) => {
+        if (err) {
+          console.error('Error getting user position:', err.message);
+        } else {
+          userPosition = result.position + 1; // Add 1 because positions start at 1
+          
+          // Get user's own entry
+          db.get('SELECT * FROM leaderboard WHERE system_id = ?', [req.systemId], (err, userEntry) => {
+            if (err || !userEntry) {
+              return res.status(200).json({
+                leaderboard: rows,
+                userPosition: userPosition,
+                userScore: null,
+                totalPlayers: rows.length
+              });
+            }
+            
+            // Calculate total number of players
+            db.get('SELECT COUNT(*) as count FROM leaderboard', (err, countResult) => {
+              const totalPlayers = err ? rows.length : countResult.count;
+              
+              return res.status(200).json({
+                leaderboard: rows,
+                userPosition: userPosition,
+                userScore: {
+                  username: userEntry.username,
+                  score: userEntry.score,
+                  completedVulns: JSON.parse(userEntry.completed_vulns || '{}'),
+                  lastUpdated: userEntry.last_updated
+                },
+                totalPlayers: totalPlayers
+              });
+            });
+          });
+        }
+      });
+    } else {
+      // No system ID yet
+      return res.status(200).json({
+        leaderboard: rows,
+        userPosition: null,
+        userScore: null,
+        totalPlayers: rows.length
+      });
+    }
+  });
+});
+
+// Add an endpoint to update username on the leaderboard
+app.post('/api/leaderboard/username', verifyToken, (req, res) => {
+  const { username } = req.body;
+  
+  if (!username || !req.systemId) {
+    return res.status(400).json({ error: 'Username required' });
+  }
+  
+  // Sanitize username
+  const sanitizedUsername = username.replace(/[<>]/g, '').substring(0, 30);
+  
+  // Update username in leaderboard
+  db.run(
+    'UPDATE leaderboard SET username = ? WHERE system_id = ?',
+    [sanitizedUsername, req.systemId],
+    function(err) {
+      if (err) {
+        console.error('Error updating leaderboard username:', err.message);
+        return res.status(500).json({ error: 'Failed to update username' });
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Username updated successfully',
+        username: sanitizedUsername
+      });
+    }
+  );
+});
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`DarkVault app running on port ${PORT}`);
   console.log(`WARNING: This application contains intentional security vulnerabilities!`);
   console.log(`It is intended for educational purposes only.`);
   console.log(`Error logs will be written to logs/error.log`);
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Add a leaderboard page
+app.get('/leaderboard', (req, res) => {
+  const html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <title>DarkVault Hacker Leaderboard</title>
+    <style>
+      body {
+        font-family: 'Courier New', monospace;
+        background-color: #121212;
+        color: #00ff00;
+        margin: 0;
+        padding: 20px;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      h1 {
+        text-align: center;
+        margin-bottom: 30px;
+        color: #00ff00;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+      }
+      th, td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #333;
+      }
+      th {
+        background-color: #1a1a1a;
+        color: #00ff00;
+      }
+      tr:hover {
+        background-color: #1a1a1a;
+      }
+      .position {
+        text-align: center;
+        font-weight: bold;
+      }
+      .username {
+        color: #00ff00;
+        font-weight: bold;
+      }
+      .score {
+        text-align: right;
+        color: #00ff00;
+        font-weight: bold;
+      }
+      .date {
+        color: #888;
+        font-size: 0.8em;
+      }
+      .user-stats {
+        background-color: #1a1a1a;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+      }
+      #set-username-form {
+        margin-top: 20px;
+        display: flex;
+        gap: 10px;
+      }
+      #username-input {
+        flex-grow: 1;
+        padding: 8px;
+        background-color: #333;
+        border: 1px solid #444;
+        color: #fff;
+      }
+      button {
+        background-color: #00ff00;
+        color: #000;
+        border: none;
+        padding: 8px 15px;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      button:hover {
+        background-color: #00cc00;
+      }
+      .hidden {
+        display: none;
+      }
+      .vuln-list {
+        margin-top: 10px;
+        font-size: 0.9em;
+      }
+      .vuln-item {
+        margin-bottom: 5px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .vuln-name {
+        color: #00cc00;
+      }
+      .vuln-date {
+        color: #888;
+        font-size: 0.8em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🏆 DarkVault Hacker Leaderboard 🏆</h1>
+      
+      <div id="user-stats" class="user-stats hidden">
+        <h2>Your Stats</h2>
+        <p>Current Position: <span id="user-position">-</span> / <span id="total-players">-</span></p>
+        <p>Score: <span id="user-score">-</span></p>
+        <div id="set-username-form">
+          <input type="text" id="username-input" placeholder="Set your username">
+          <button id="set-username-btn">Update</button>
+        </div>
+        <h3>Completed Vulnerabilities:</h3>
+        <div id="vuln-list" class="vuln-list"></div>
+      </div>
+      
+      <h2>Top Hackers</h2>
+      <table id="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Position</th>
+            <th>Username</th>
+            <th>Score</th>
+            <th>Last Activity</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard-body">
+          <tr>
+            <td colspan="4" style="text-align: center">Loading leaderboard data...</td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <p style="text-align: center">
+        <a href="/" style="color: #00ff00;">Back to DarkVault</a>
+      </p>
+    </div>
+    
+    <script>
+      // Function to format dates
+      function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleString();
+      }
+      
+      // Function to load leaderboard data
+      async function loadLeaderboard() {
+        try {
+          const response = await fetch('/api/leaderboard');
+          const data = await response.json();
+          
+          // Update leaderboard table
+          const tableBody = document.getElementById('leaderboard-body');
+          tableBody.innerHTML = '';
+          
+          if (data.leaderboard.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = '<td colspan="4" style="text-align: center">No data available yet</td>';
+            tableBody.appendChild(row);
+          } else {
+            data.leaderboard.forEach((entry, index) => {
+              const row = document.createElement('tr');
+              row.innerHTML = \`
+                <td class="position">\${index + 1}</td>
+                <td class="username">\${entry.username || 'Anonymous'}</td>
+                <td class="score">\${entry.score}</td>
+                <td class="date">\${formatDate(entry.last_updated)}</td>
+              \`;
+              tableBody.appendChild(row);
+            });
+          }
+          
+          // Update user stats if available
+          const userStatsDiv = document.getElementById('user-stats');
+          if (data.userScore) {
+            userStatsDiv.classList.remove('hidden');
+            document.getElementById('user-position').textContent = data.userPosition;
+            document.getElementById('total-players').textContent = data.totalPlayers;
+            document.getElementById('user-score').textContent = data.userScore.score;
+            document.getElementById('username-input').value = data.userScore.username || '';
+            
+            // Update completed vulnerabilities
+            const vulnList = document.getElementById('vuln-list');
+            vulnList.innerHTML = '';
+            
+            const completedVulns = data.userScore.completedVulns;
+            if (Object.keys(completedVulns).length === 0) {
+              vulnList.innerHTML = '<p>No vulnerabilities exploited yet</p>';
+            } else {
+              // Sort vulnerabilities by discovery date
+              const vulnEntries = Object.entries(completedVulns);
+              vulnEntries.sort((a, b) => new Date(b[1].discovered) - new Date(a[1].discovered));
+              
+              vulnEntries.forEach(([vulnType, vulnData]) => {
+                const vulnItem = document.createElement('div');
+                vulnItem.className = 'vuln-item';
+                vulnItem.innerHTML = \`
+                  <span class="vuln-name">\${formatVulnName(vulnType)}</span>
+                  <span class="vuln-date">\${formatDate(vulnData.discovered)}</span>
+                \`;
+                vulnList.appendChild(vulnItem);
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error loading leaderboard:', error);
+        }
+      }
+      
+      // Format vulnerability name for display
+      function formatVulnName(vulnType) {
+        // Convert snake_case to Title Case with spaces
+        const formatted = vulnType
+          .split('_')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+          
+        // Add special formatting for different vulnerability types
+        if (vulnType.includes('sqli')) return '💉 ' + formatted;
+        if (vulnType.includes('xss')) return '🔥 ' + formatted;
+        if (vulnType.includes('csrf')) return '🔄 ' + formatted;
+        if (vulnType.includes('idor')) return '🔓 ' + formatted;
+        if (vulnType.includes('command')) return '⚡ ' + formatted;
+        if (vulnType.includes('upload')) return '📁 ' + formatted;
+        if (vulnType.includes('prototype')) return '🧬 ' + formatted;
+        if (vulnType.includes('jwt')) return '🔑 ' + formatted;
+        if (vulnType.includes('ssrf')) return '🌐 ' + formatted;
+        if (vulnType.includes('race')) return '🏎️ ' + formatted;
+        
+        return '🐞 ' + formatted;
+      }
+      
+      // Set up username update
+      document.getElementById('set-username-btn').addEventListener('click', async () => {
+        const username = document.getElementById('username-input').value.trim();
+        if (!username) return;
+        
+        try {
+          const response = await fetch('/api/leaderboard/username', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': localStorage.getItem('token') || ''
+            },
+            body: JSON.stringify({ username })
+          });
+          
+          if (response.ok) {
+            loadLeaderboard();
+          } else {
+            alert('Failed to update username');
+          }
+        } catch (error) {
+          console.error('Error updating username:', error);
+        }
+      });
+      
+      // Load leaderboard on page load
+      document.addEventListener('DOMContentLoaded', loadLeaderboard);
+      
+      // Refresh leaderboard every 30 seconds
+      setInterval(loadLeaderboard, 30000);
+    </script>
+  </body>
+  </html>
+  `;
+  
+  res.setHeader('Content-Type', 'text/html');
+  return res.status(200).send(html);
 }); 
