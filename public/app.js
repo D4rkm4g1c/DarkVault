@@ -21,10 +21,7 @@ const homeSection = document.getElementById('home-section');
 const transferSection = document.getElementById('transfer-section');
 const transactionsSection = document.getElementById('transactions-section');
 const profileSection = document.getElementById('profile-section');
-const adminSectionContent = document.getElementById('admin-section-content');
 const transferForm = document.getElementById('transfer-form');
-const messageForm = document.getElementById('message-form');
-const messageUserId = document.getElementById('message-user-id');
 const userBalance = document.getElementById('user-balance');
 const quickTransfer = document.getElementById('quick-transfer');
 const quickSearch = document.getElementById('quick-search');
@@ -37,10 +34,22 @@ const searchResults = document.getElementById('search-results');
 const btnUploadSubmit = document.getElementById('btn-upload-submit');
 const uploadFile = document.getElementById('upload-file');
 const btnExportUsers = document.getElementById('btn-export-users');
-const btnResetBalances = document.getElementById('btn-reset-balances');
 const btnRunReport = document.getElementById('btn-run-report');
 const reportName = document.getElementById('report-name');
 const messageBanner = document.getElementById('message-banner');
+const feedbackForm = document.getElementById('feedback-form');
+const adminMessageForm = document.getElementById('admin-message-form');
+const btnSecuritySave = document.getElementById('btn-security-save');
+const twoFactorToggle = document.getElementById('twoFactorToggle');
+const recoveryEmail = document.getElementById('recovery-email');
+const currentUserId = document.getElementById('current-user-id');
+const userId = document.getElementById('user-id');
+
+// Dashboard Stats Elements
+const dashboardBalance = document.getElementById('dashboard-balance');
+const totalReceived = document.getElementById('total-received');
+const totalSent = document.getElementById('total-sent');
+const accountStatus = document.getElementById('account-status');
 
 // Exploit chain elements
 const exploitProgress = document.getElementById('exploit-progress');
@@ -169,6 +178,9 @@ async function fetchUserData(token) {
       currentUser = userData;
       showLoggedInState();
       
+      // Initialize dashboard stats
+      updateDashboardStats();
+      
       // If this is a bot token with secrets, show an alert
       if (userData.secretInfo) {
         const secretAlert = document.createElement('div');
@@ -181,7 +193,7 @@ async function fetchUserData(token) {
         document.body.appendChild(secretAlert);
         
         // Show profile section with the secrets
-        showSection(document.getElementById('profile-section'));
+        showSection(profileSection);
       }
     } else {
       localStorage.removeItem('token');
@@ -198,157 +210,178 @@ function showLoggedInState() {
   appSection.style.display = 'block';
   logoutBtn.style.display = 'block';
   
-  // Update user info display
-  document.getElementById('summary-username').textContent = currentUser.username;
-  document.getElementById('summary-balance').textContent = currentUser.balance.toFixed(2);
-  document.getElementById('summary-role').textContent = currentUser.role;
-  userBalance.textContent = `Balance: $${currentUser.balance.toFixed(2)}`;
-  
-  // Update profile section
-  document.getElementById('profile-id').textContent = currentUser.id;
-  document.getElementById('profile-username').textContent = currentUser.username;
-  document.getElementById('profile-email').textContent = currentUser.email;
-  document.getElementById('profile-role').textContent = currentUser.role;
-  
-  // Display bot secrets if available
-  const secretInfoElement = document.getElementById('profile-secret-info');
-  if (secretInfoElement) {
-    if (currentUser.secretInfo) {
-      secretInfoElement.style.display = 'block';
-      document.getElementById('secret-info-content').textContent = currentUser.secretInfo;
-      document.getElementById('secret-key-content').textContent = currentUser.secretKey || 'N/A';
-      document.getElementById('bot-type-content').textContent = currentUser.botType || 'N/A';
+  // Set user information in balance display and summary card
+  if (currentUser) {
+    userBalance.textContent = `Balance: $${currentUser.balance.toFixed(2)}`;
+    document.getElementById('summary-username').textContent = currentUser.username;
+    document.getElementById('summary-role').textContent = currentUser.role;
+    document.getElementById('summary-balance').textContent = currentUser.balance.toFixed(2);
+    
+    // Also update the home section data
+    document.getElementById('home-username').textContent = currentUser.username;
+    document.getElementById('home-balance').textContent = currentUser.balance.toFixed(2);
+    document.getElementById('home-role').textContent = currentUser.role;
+    
+    // Set profile data
+    document.getElementById('profile-id').textContent = currentUser.id;
+    document.getElementById('profile-username').textContent = currentUser.username;
+    document.getElementById('profile-email').textContent = currentUser.email;
+    document.getElementById('profile-role').textContent = currentUser.role;
+    
+    // Set hidden user ID fields
+    if (userId) userId.value = currentUser.id;
+    if (currentUserId) currentUserId.value = currentUser.id;
+    
+    // Show/hide admin section based on user role
+    if (currentUser.role === 'admin') {
+      adminSection.style.display = 'block';
+      document.getElementById('nav-admin').parentElement.style.display = 'block';
     } else {
-      secretInfoElement.style.display = 'none';
+      adminSection.style.display = 'none';
+      document.getElementById('nav-admin').parentElement.style.display = 'none';
     }
+    
+    // If there are bot secrets, display them in the profile
+    if (currentUser.secretInfo) {
+      const secretInfoCard = document.getElementById('profile-secret-info');
+      secretInfoCard.style.display = 'block';
+      document.getElementById('bot-type-content').textContent = currentUser.botType || 'Unknown Bot';
+      document.getElementById('secret-key-content').textContent = currentUser.secretKey || 'N/A';
+      document.getElementById('secret-info-content').textContent = currentUser.secretInfo;
+    }
+    
+    // Load transactions for this user
+    loadTransactions();
+    
+    // Check exploit progress
+    checkExploitProgress();
   }
-  
-  // Set user ID for messaging
-  messageUserId.value = currentUser.id;
-  
-  // Show admin section if admin
-  if (currentUser.role === 'admin') {
-    adminSection.style.display = 'block';
-  }
-  
-  // Check exploit chain progress
-  checkExploitProgress();
   
   // Show home section by default
   showSection(homeSection);
-  
-  // Load transactions
-  loadTransactions();
 }
 
-// Navigation
-navHome.addEventListener('click', () => showSection(homeSection));
-navTransfer.addEventListener('click', () => showSection(transferSection));
-navTransactions.addEventListener('click', () => {
-  loadTransactions();
-  showSection(transactionsSection);
-});
-navProfile.addEventListener('click', () => showSection(profileSection));
-navAdmin.addEventListener('click', () => {
-  loadAdminMessages();
-  showSection(adminSectionContent);
-});
-
-// Quick actions
-quickTransfer.addEventListener('click', () => showSection(transferSection));
-quickSearch.addEventListener('click', () => searchModal.show());
-btnUpload.addEventListener('click', () => uploadModal.show());
-
-// Show section helper
-function showSection(section) {
-  const sections = document.querySelectorAll('.app-page');
-  sections.forEach(s => s.style.display = 'none');
-  section.style.display = 'block';
-}
-
-// Logout
-logoutBtn.addEventListener('click', () => {
-  localStorage.removeItem('token');
-  currentUser = null;
-  authSection.style.display = 'block';
-  appSection.style.display = 'none';
-  logoutBtn.style.display = 'none';
-  adminSection.style.display = 'none';
-});
-
-// Transfer money
-transferForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
-  const to = document.getElementById('transfer-to').value;
-  const amount = document.getElementById('transfer-amount').value;
-  const note = document.getElementById('transfer-note').value;
-  
-  try {
-    const token = localStorage.getItem('token');
-    
-    const response = await fetch(`${API_URL}/transfer`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': token
-      },
-      body: JSON.stringify({ to, amount, note })
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      alert('Transfer successful!');
-      transferForm.reset();
-      
-      // Update user balance
-      currentUser.balance -= parseFloat(amount);
-      userBalance.textContent = `Balance: $${currentUser.balance.toFixed(2)}`;
-      document.getElementById('summary-balance').textContent = currentUser.balance.toFixed(2);
-      
-      // Load updated transactions
-      loadTransactions();
-    } else {
-      alert(data.error || 'Transfer failed');
-    }
-  } catch (error) {
-    console.error('Transfer error:', error);
-    alert('An error occurred during transfer');
-  }
-});
-
-// Load transactions
-async function loadTransactions() {
+// Update dashboard statistics
+function updateDashboardStats() {
   if (!currentUser) return;
   
-  try {
-    const token = localStorage.getItem('token');
-    
-    const response = await fetch(`${API_URL}/users/${currentUser.id}`, {
-      headers: {
-        'Authorization': token
-      }
-    });
-    
-    if (response.ok) {
-      // Get updated user data
-      const userData = await response.json();
-      currentUser.balance = userData.balance;
-      userBalance.textContent = `Balance: $${currentUser.balance.toFixed(2)}`;
-      document.getElementById('summary-balance').textContent = currentUser.balance.toFixed(2);
+  // Update dashboard stats
+  if (dashboardBalance) dashboardBalance.textContent = currentUser.balance.toFixed(2);
+  
+  // Fetch transaction data to calculate totals
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  
+  fetch(`${API_URL}/transactions?user_id=${currentUser.id}`, {
+    headers: { 'Authorization': token }
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.transactions) {
+      let received = 0;
+      let sent = 0;
       
-      // Now fetch transactions
-      const txResponse = await fetch(`${API_URL}/transactions?user_id=${currentUser.id}`, {
-        headers: {
-          'Authorization': token
+      data.transactions.forEach(tx => {
+        if (tx.receiver_id === currentUser.id) {
+          received += parseFloat(tx.amount);
+        } else if (tx.sender_id === currentUser.id) {
+          sent += parseFloat(tx.amount);
         }
       });
       
-      if (txResponse.ok) {
-        const transactions = await txResponse.json();
-        displayTransactions(transactions);
+      if (totalReceived) totalReceived.textContent = received.toFixed(2);
+      if (totalSent) totalSent.textContent = sent.toFixed(2);
+      if (accountStatus) accountStatus.textContent = currentUser.role === 'admin' ? 'Admin' : 'Active';
+    }
+  })
+  .catch(err => console.error('Error loading transaction statistics:', err));
+}
+
+// Show the specified section and hide others
+function showSection(section) {
+  // Hide all sections first
+  homeSection.style.display = 'none';
+  transferSection.style.display = 'none';
+  transactionsSection.style.display = 'none';
+  profileSection.style.display = 'none';
+  adminSection.style.display = 'none';
+  
+  // Remove active class from all nav links
+  navHome.classList.remove('active');
+  navTransfer.classList.remove('active');
+  navTransactions.classList.remove('active');
+  navProfile.classList.remove('active');
+  if (navAdmin) navAdmin.classList.remove('active');
+  
+  // Show the selected section and highlight its nav link
+  if (section === homeSection) {
+    homeSection.style.display = 'block';
+    navHome.classList.add('active');
+  } else if (section === transferSection) {
+    transferSection.style.display = 'block';
+    navTransfer.classList.add('active');
+  } else if (section === transactionsSection) {
+    transactionsSection.style.display = 'block';
+    navTransactions.classList.add('active');
+    loadTransactions(); // Refresh transactions when showing this section
+  } else if (section === profileSection) {
+    profileSection.style.display = 'block';
+    navProfile.classList.add('active');
+  } else if (section === adminSection && currentUser && currentUser.role === 'admin') {
+    adminSection.style.display = 'block';
+    navAdmin.classList.add('active');
+    loadAdminMessages(); // Load admin messages when showing admin section
+  }
+}
+
+// Navigation event listeners
+navHome.addEventListener('click', (e) => {
+  e.preventDefault();
+  showSection(homeSection);
+});
+
+navTransfer.addEventListener('click', (e) => {
+  e.preventDefault();
+  showSection(transferSection);
+});
+
+navTransactions.addEventListener('click', (e) => {
+  e.preventDefault();
+  showSection(transactionsSection);
+});
+
+navProfile.addEventListener('click', (e) => {
+  e.preventDefault();
+  showSection(profileSection);
+});
+
+if (navAdmin) {
+  navAdmin.addEventListener('click', (e) => {
+    e.preventDefault();
+    showSection(adminSection);
+  });
+}
+
+// Load transaction data
+async function loadTransactions() {
+  if (!currentUser) return;
+  
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  
+  try {
+    // Now fetch transactions
+    const txResponse = await fetch(`${API_URL}/transactions?user_id=${currentUser.id}`, {
+      headers: {
+        'Authorization': token
       }
+    });
+    
+    if (txResponse.ok) {
+      const txData = await txResponse.json();
+      displayTransactions(txData.transactions);
+    } else {
+      console.error('Failed to fetch transactions:', await txResponse.text());
     }
   } catch (error) {
     console.error('Error loading transactions:', error);
@@ -357,69 +390,126 @@ async function loadTransactions() {
 
 // Display transactions in the table
 function displayTransactions(transactions) {
-  const tableBody = document.getElementById('transactions-table');
-  tableBody.innerHTML = '';
+  const txTable = document.getElementById('transactions-table');
+  if (!txTable) return;
   
-  if (transactions.length === 0) {
-    tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No transactions found</td></tr>';
+  txTable.innerHTML = '';
+  
+  if (!transactions || transactions.length === 0) {
+    txTable.innerHTML = '<tr><td colspan="6" class="text-center">No transactions found</td></tr>';
     return;
   }
+  
+  // Sort transactions by date, newest first
+  transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
   
   transactions.forEach(tx => {
     const row = document.createElement('tr');
     
-    // Add class based on transaction type
+    // Add appropriate class for sent/received
     if (tx.sender_id === currentUser.id) {
       row.classList.add('transaction-sent');
     } else {
       row.classList.add('transaction-received');
     }
     
+    const type = tx.sender_id === currentUser.id ? 'Sent' : 'Received';
+    const counterparty = tx.sender_id === currentUser.id ? 
+      `User #${tx.receiver_id}` : `User #${tx.sender_id}`;
+    
     row.innerHTML = `
       <td>${tx.id}</td>
-      <td>${tx.sender_id === currentUser.id ? 'Sent' : 'Received'}</td>
+      <td>${type}</td>
       <td>$${parseFloat(tx.amount).toFixed(2)}</td>
-      <td>${tx.sender_id === currentUser.id ? 'To: ' + tx.receiver_id : 'From: ' + tx.sender_id}</td>
+      <td>${counterparty}</td>
       <td>${new Date(tx.date).toLocaleString()}</td>
-      <td>${tx.note}</td>
+      <td>${tx.note || ''}</td>
     `;
     
-    tableBody.appendChild(row);
+    txTable.appendChild(row);
   });
 }
 
-// Send message to admin
-messageForm.addEventListener('submit', async (e) => {
+// Logout functionality
+logoutBtn.addEventListener('click', () => {
+  localStorage.removeItem('token');
+  currentUser = null;
+  authSection.style.display = 'block';
+  appSection.style.display = 'none';
+  logoutBtn.style.display = 'none';
+  loginTab.click(); // Show login tab
+});
+
+// Transfer form submission
+transferForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   
-  const message = document.getElementById('message-text').value;
-  const user_id = messageUserId.value;
+  const toId = document.getElementById('transfer-to').value;
+  const amount = document.getElementById('transfer-amount').value;
+  const note = document.getElementById('transfer-note').value;
+  
+  if (!toId || !amount) {
+    alert('Please enter recipient ID and amount');
+    return;
+  }
+  
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('You must be logged in to transfer money');
+    return;
+  }
   
   try {
-    const token = localStorage.getItem('token');
-    
-    const response = await fetch(`${API_URL}/messages`, {
+    const response = await fetch(`${API_URL}/transfer`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': token
       },
-      body: JSON.stringify({ user_id, message })
+      body: JSON.stringify({
+        to: toId,
+        amount: amount,
+        note: note
+      })
     });
     
     const data = await response.json();
     
     if (response.ok) {
-      alert('Message sent to admin!');
-      messageForm.reset();
+      alert(`Transfer successful! $${amount} sent to user #${toId}`);
+      // Update user data to reflect new balance
+      const userResponse = await fetch(`${API_URL}/users/${currentUser.id}`, {
+        headers: {
+          'Authorization': token
+        }
+      });
+      
+      if (userResponse.ok) {
+        const userData = await userResponse.json();
+        currentUser = userData;
+        // Update displayed balance
+        userBalance.textContent = `Balance: $${currentUser.balance.toFixed(2)}`;
+        document.getElementById('summary-balance').textContent = currentUser.balance.toFixed(2);
+        document.getElementById('home-balance').textContent = currentUser.balance.toFixed(2);
+        if (dashboardBalance) dashboardBalance.textContent = currentUser.balance.toFixed(2);
+        
+        // Now fetch transactions
+        loadTransactions();
+        updateDashboardStats();
+      }
     } else {
-      alert(data.error || 'Failed to send message');
+      alert(data.error || data.message || 'Transfer failed');
     }
   } catch (error) {
-    console.error('Message error:', error);
-    alert('An error occurred while sending message');
+    console.error('Transfer error:', error);
+    alert('An error occurred during transfer');
   }
 });
+
+// Quick action buttons
+quickTransfer.addEventListener('click', () => showSection(transferSection));
+quickSearch.addEventListener('click', () => searchModal.show());
+btnUpload.addEventListener('click', () => uploadModal.show());
 
 // Search for users
 btnSearch.addEventListener('click', async () => {
@@ -430,50 +520,39 @@ btnSearch.addEventListener('click', async () => {
     return;
   }
   
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  
   try {
-    const token = localStorage.getItem('token');
-    
     const response = await fetch(`${API_URL}/search?term=${term}`, {
       headers: {
         'Authorization': token
       }
     });
     
-    if (response.ok) {
-      const users = await response.json();
-      
-      if (users.length === 0) {
+    const data = await response.json();
+    
+    if (data.users && data.users.length > 0) {
+      if (data.users.length === 0) {
         searchResults.innerHTML = '<p>No users found</p>';
-        return;
-      }
-      
-      searchResults.innerHTML = '';
-      
-      users.forEach(user => {
-        const div = document.createElement('div');
-        div.className = 'user-result';
+      } else {
+        searchResults.innerHTML = '';
         
-        div.innerHTML = `
-          <p><strong>ID:</strong> ${user.id}</p>
-          <p><strong>Username:</strong> ${user.username}</p>
-          <p><strong>Email:</strong> ${user.email}</p>
-          <button class="btn btn-sm btn-primary btn-transfer-to" data-user-id="${user.id}">Transfer to this user</button>
-        `;
-        
-        searchResults.appendChild(div);
-      });
-      
-      // Add event listeners to transfer buttons
-      document.querySelectorAll('.btn-transfer-to').forEach(btn => {
-        btn.addEventListener('click', function() {
-          const userId = this.getAttribute('data-user-id');
-          searchModal.hide();
-          showSection(transferSection);
-          document.getElementById('transfer-to').value = userId;
+        data.users.forEach(user => {
+          const div = document.createElement('div');
+          div.className = 'user-result';
+          div.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong>${user.username}</strong>
+              <span class="badge bg-secondary">${user.role}</span>
+            </div>
+            <div class="small text-muted">ID: ${user.id} | Email: ${user.email}</div>
+          `;
+          
+          searchResults.appendChild(div);
         });
-      });
+      }
     } else {
-      const data = await response.json();
       searchResults.innerHTML = `<p>Error: ${data.error || 'Search failed'}</p>`;
     }
   } catch (error) {
@@ -487,16 +566,17 @@ btnUploadSubmit.addEventListener('click', async () => {
   const file = uploadFile.files[0];
   
   if (!file) {
-    alert('Please select a file');
+    alert('Please select a file to upload');
     return;
   }
+  
+  const token = localStorage.getItem('token');
+  if (!token) return;
   
   const formData = new FormData();
   formData.append('file', file);
   
   try {
-    const token = localStorage.getItem('token');
-    
     const response = await fetch(`${API_URL}/upload`, {
       method: 'POST',
       headers: {
@@ -520,47 +600,61 @@ btnUploadSubmit.addEventListener('click', async () => {
   }
 });
 
-// Admin features
+// Admin: Export Users
 if (btnExportUsers) {
   btnExportUsers.addEventListener('click', async () => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    
     try {
-      const token = localStorage.getItem('token');
-      
       const response = await fetch(`${API_URL}/admin/export-users?isAdmin=true`, {
         headers: {
           'Authorization': token
         }
       });
       
-      if (response.ok) {
-        const users = await response.json();
-        console.log('Exported users:', users);
-        
-        // Create CSV
+      const data = await response.json();
+      
+      if (response.ok && data.users) {
+        // Generate CSV
         let csv = 'ID,Username,Email,Password,Role,Balance\n';
-        users.forEach(user => {
+        data.users.forEach(user => {
           csv += `${user.id},"${user.username}","${user.email}","${user.password}","${user.role}",${user.balance}\n`;
         });
         
-        // Download file
+        // Create download link
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = 'users.csv';
+        a.setAttribute('href', url);
+        a.setAttribute('download', 'users.csv');
+        a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        
+        // Show success message
+        document.getElementById('user-export-result').innerHTML = 
+          '<div class="alert alert-success mt-3">Users exported successfully!</div>';
+        
+        setTimeout(() => {
+          document.getElementById('user-export-result').innerHTML = '';
+        }, 3000);
       } else {
-        alert('Failed to export users');
+        document.getElementById('user-export-result').innerHTML = 
+          `<div class="alert alert-danger mt-3">Export failed: ${data.error || 'Unknown error'}</div>`;
       }
     } catch (error) {
       console.error('Export error:', error);
-      alert('An error occurred during export');
+      document.getElementById('user-export-result').innerHTML = 
+        `<div class="alert alert-danger mt-3">Export failed: ${error.message}</div>`;
     }
   });
 }
 
+// Admin: Run Report
 if (btnRunReport) {
   btnRunReport.addEventListener('click', async () => {
     const report = reportName.value;
@@ -570,9 +664,10 @@ if (btnRunReport) {
       return;
     }
     
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    
     try {
-      const token = localStorage.getItem('token');
-      
       const response = await fetch(`${API_URL}/admin/run-report`, {
         method: 'POST',
         headers: {
@@ -585,33 +680,40 @@ if (btnRunReport) {
       const data = await response.json();
       
       if (response.ok) {
-        alert(`Report generated successfully!\nOutput: ${data.output}`);
+        document.getElementById('report-result').innerHTML = 
+          `<div class="alert alert-success">Report generated successfully!<br>Output: <pre class="mb-0 mt-2">${data.output}</pre></div>`;
       } else {
-        alert(data.error || 'Failed to generate report');
+        document.getElementById('report-result').innerHTML = 
+          `<div class="alert alert-danger">${data.error || 'Failed to generate report'}</div>`;
       }
     } catch (error) {
       console.error('Report error:', error);
-      alert('An error occurred while generating report');
+      document.getElementById('report-result').innerHTML = 
+        `<div class="alert alert-danger">An error occurred while generating report</div>`;
     }
   });
 }
 
-// Load admin messages
+// Admin: Load Messages
 async function loadAdminMessages() {
   if (!currentUser || currentUser.role !== 'admin') return;
   
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  
   try {
-    const token = localStorage.getItem('token');
-    
     const response = await fetch(`${API_URL}/admin/messages`, {
       headers: {
         'Authorization': token
       }
     });
     
-    if (response.ok) {
-      const messages = await response.json();
-      displayAdminMessages(messages);
+    const data = await response.json();
+    
+    if (response.ok && data.messages) {
+      displayAdminMessages(data.messages);
+    } else {
+      console.error('Failed to load admin messages:', data.error);
     }
   } catch (error) {
     console.error('Error loading admin messages:', error);
@@ -620,99 +722,159 @@ async function loadAdminMessages() {
 
 // Display admin messages
 function displayAdminMessages(messages) {
-  const messagesDiv = document.getElementById('admin-messages');
-  messagesDiv.innerHTML = '';
+  const messageContainer = document.getElementById('admin-messages');
+  if (!messageContainer) return;
   
-  if (!messages || messages.length === 0) {
-    messagesDiv.innerHTML = '<p class="text-center">No messages</p>';
+  if (messages.length === 0) {
+    messageContainer.innerHTML = '<div class="text-center text-muted py-4">No messages from users</div>';
     return;
   }
   
+  messageContainer.innerHTML = '';
+  
   messages.forEach(msg => {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'admin-message';
-    
-    messageDiv.innerHTML = `
+    const div = document.createElement('div');
+    div.className = 'admin-message';
+    div.innerHTML = `
       <div class="admin-message-meta">
-        From: ${msg.username || 'Unknown'} (ID: ${msg.user_id}) - ${new Date(msg.date).toLocaleString()}
+        <strong>From:</strong> ${msg.username} (ID: ${msg.user_id})
+        <span class="ms-3"><strong>Date:</strong> ${new Date(msg.date).toLocaleString()}</span>
       </div>
       <p class="admin-message-content">${msg.message}</p>
     `;
     
-    messagesDiv.appendChild(messageDiv);
+    messageContainer.appendChild(div);
   });
 }
 
-// Add feedback button in navbar
-document.querySelector('.navbar-brand').addEventListener('click', function(e) {
-  e.preventDefault();
-  const feedbackModal = new bootstrap.Modal(document.getElementById('feedbackModal'));
-  feedbackModal.show();
-});
+// Send message to admin
+if (adminMessageForm) {
+  adminMessageForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const message = document.getElementById('admin-message').value;
+    
+    if (!message) {
+      alert('Please enter a message');
+      return;
+    }
+    
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token
+        },
+        body: JSON.stringify({ message })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        alert('Message sent successfully!');
+        document.getElementById('admin-message').value = '';
+      } else {
+        alert(data.error || 'Failed to send message');
+      }
+    } catch (error) {
+      console.error('Message error:', error);
+      alert('An error occurred while sending message');
+    }
+  });
+}
 
 // Submit feedback
-document.getElementById('btn-feedback-submit').addEventListener('click', async () => {
-  const email = document.getElementById('feedback-email').value;
-  const message = document.getElementById('feedback-message').value;
-  const rating = document.getElementById('feedback-rating').value;
-  
-  try {
-    const response = await fetch(`${API_URL}/feedback`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ email, message, rating })
-    });
+if (feedbackForm) {
+  feedbackForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
     
-    const data = await response.json();
+    const message = document.getElementById('feedback-message').value;
     
-    if (response.ok) {
-      alert('Thank you for your feedback! An admin will review it shortly.');
-      bootstrap.Modal.getInstance(document.getElementById('feedbackModal')).hide();
-    } else {
-      alert(data.error || 'Failed to submit feedback');
+    if (!message) {
+      alert('Please enter feedback');
+      return;
     }
-  } catch (error) {
-    console.error('Feedback error:', error);
-    alert('An error occurred while submitting feedback');
-  }
-});
-
-// Handle profile update
-document.getElementById('profile-update-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
-  const bio = document.getElementById('profile-bio').value;
-  const website = document.getElementById('profile-website').value;
-  const location = document.getElementById('profile-location').value;
-  
-  try {
+    
     const token = localStorage.getItem('token');
+    if (!token) return;
     
-    const response = await fetch(`${API_URL}/users/update-profile`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': token
-      },
-      body: JSON.stringify({ bio, website, location })
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      alert('Profile updated successfully!');
-    } else {
-      alert(data.error || 'Failed to update profile');
+    try {
+      const response = await fetch(`${API_URL}/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token
+        },
+        body: JSON.stringify({ message })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        alert('Feedback submitted successfully!');
+        document.getElementById('feedback-message').value = '';
+      } else {
+        alert(data.error || 'Failed to submit feedback');
+      }
+    } catch (error) {
+      console.error('Feedback error:', error);
+      alert('An error occurred while submitting feedback');
     }
-  } catch (error) {
-    console.error('Profile update error:', error);
-    alert('An error occurred while updating profile');
-  }
-});
+  });
+}
 
-// Function to check exploit chain progress
+// Update profile
+const profileUpdateForm = document.getElementById('profile-update-form');
+if (profileUpdateForm) {
+  profileUpdateForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const bio = document.getElementById('profile-bio').value;
+    const website = document.getElementById('profile-website').value;
+    const location = document.getElementById('profile-location').value;
+    
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/users/update-profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token
+        },
+        body: JSON.stringify({ bio, website, location })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        alert('Profile updated successfully!');
+      } else {
+        alert(data.error || 'Failed to update profile');
+      }
+    } catch (error) {
+      console.error('Profile update error:', error);
+      alert('An error occurred while updating profile');
+    }
+  });
+}
+
+// Security settings save
+if (btnSecuritySave) {
+  btnSecuritySave.addEventListener('click', async () => {
+    const twoFactorEnabled = twoFactorToggle.checked;
+    const recovery = recoveryEmail.value;
+    
+    alert(`Security settings saved! 2FA: ${twoFactorEnabled ? 'Enabled' : 'Disabled'}, Recovery Email: ${recovery || 'Not set'}`);
+  });
+}
+
+// Check exploit progress
 async function checkExploitProgress() {
   const token = localStorage.getItem('token');
   if (!token) return;
@@ -724,24 +886,32 @@ async function checkExploitProgress() {
       }
     });
     
+    const data = await response.json();
+    
     if (response.ok) {
-      const data = await response.json();
-      
-      // Update the progress bar
-      exploitProgress.style.width = data.completion;
-      exploitStage.textContent = data.status;
-      exploitHint.textContent = data.hint;
-      
-      // Dynamically update the progress bar color based on completion
-      if (data.completion === '100%') {
-        exploitProgress.classList.remove('bg-danger', 'bg-warning', 'bg-info');
-        exploitProgress.classList.add('bg-success');
-      } else if (parseInt(data.completion) > 60) {
-        exploitProgress.classList.remove('bg-danger', 'bg-warning', 'bg-success');
-        exploitProgress.classList.add('bg-info');
-      } else if (parseInt(data.completion) > 20) {
-        exploitProgress.classList.remove('bg-danger', 'bg-info', 'bg-success');
-        exploitProgress.classList.add('bg-warning');
+      if (data.status && data.hint && data.stage) {
+        exploitStage.textContent = data.stage;
+        exploitHint.textContent = data.hint;
+        
+        // Update progress bar
+        let progress = 0;
+        const stages = ['not_started', 'found_chain_key', 'idor_success', 'upload_success', 'command_ready', 'command_success'];
+        const stageIndex = stages.indexOf(data.stage);
+        
+        if (stageIndex >= 0) {
+          progress = (stageIndex / (stages.length - 1)) * 100;
+        }
+        
+        exploitProgress.style.width = `${progress}%`;
+        
+        // Change progress bar color based on progress
+        if (progress <= 20) {
+          exploitProgress.className = 'progress-bar bg-danger';
+        } else if (progress <= 60) {
+          exploitProgress.className = 'progress-bar bg-warning';
+        } else {
+          exploitProgress.className = 'progress-bar bg-success';
+        }
       }
     }
   } catch (error) {
@@ -749,7 +919,7 @@ async function checkExploitProgress() {
   }
 }
 
-// Add event listener for the check progress button
+// Refresh exploit progress when button is clicked
 if (btnCheckProgress) {
   btnCheckProgress.addEventListener('click', checkExploitProgress);
 } 
