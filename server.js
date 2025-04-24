@@ -10,6 +10,7 @@ const { exec } = require('child_process');
 const axios = require('axios');
 const cookieParser = require('cookie-parser');
 const os = require('os');
+const UglifyJS = require('uglify-js');
 
 // Create logs directory if it doesn't exist
 if (!fs.existsSync('logs')) {
@@ -35,6 +36,32 @@ const WEAK_KEY = 'dev-key'; // Secondary weak key for testing
 // Create the app
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Add middleware to serve obfuscated JS in production
+if (process.env.NODE_ENV === 'production') {
+  // Middleware to intercept .js file requests
+  app.use((req, res, next) => {
+    if (req.path.endsWith('.js')) {
+      const filePath = path.join(__dirname, 'public', req.path);
+      try {
+        const source = fs.readFileSync(filePath, 'utf8');
+        // Obfuscate the JS file
+        const result = UglifyJS.minify(source, {
+          mangle: true,
+          compress: true
+        });
+        if (result.error) throw result.error;
+        
+        res.type('application/javascript');
+        res.send(result.code);
+      } catch (err) {
+        next(); // Let static middleware handle it if there's an error
+      }
+    } else {
+      next();
+    }
+  });
+}
 
 // Create an internal admin service for SSRF targets
 const internalAdminApp = express();

@@ -48,16 +48,13 @@ const exploitStage = document.getElementById('exploit-stage');
 const exploitHint = document.getElementById('exploit-hint');
 const btnCheckProgress = document.getElementById('btn-check-progress');
 
-// Check if there's a message in URL (vulnerable to XSS)
+// Check if there's a message in URL
 window.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
   const message = urlParams.get('message');
   
   if (message) {
     messageBanner.style.display = 'block';
-    // Vulnerable to XSS - directly injecting parameter into innerHTML
-    // Example: http://localhost:3000/?message=<script>alert(document.cookie)</script>
-    // Can be used to steal cookies, inject fake login forms, redirect users, etc.
     messageBanner.innerHTML = message;
   }
   
@@ -161,7 +158,6 @@ async function fetchUserData(token) {
     const userId = tokenData.id;
     
     // Always get fresh user data when this function is called
-    // This ensures we see the bot secrets when using a bot token
     const response = await fetch(`${API_URL}/users/${userId}`, {
       headers: {
         'Authorization': token
@@ -227,7 +223,7 @@ function showLoggedInState() {
     }
   }
   
-  // Set user ID for messaging (vulnerable to parameter tampering)
+  // Set user ID for messaging
   messageUserId.value = currentUser.id;
   
   // Show admin section if admin
@@ -306,7 +302,7 @@ transferForm.addEventListener('submit', async (e) => {
       alert('Transfer successful!');
       transferForm.reset();
       
-      // Update user balance (client-side only, vulnerable to manipulation)
+      // Update user balance
       currentUser.balance -= parseFloat(amount);
       userBalance.textContent = `Balance: $${currentUser.balance.toFixed(2)}`;
       document.getElementById('summary-balance').textContent = currentUser.balance.toFixed(2);
@@ -329,7 +325,6 @@ async function loadTransactions() {
   try {
     const token = localStorage.getItem('token');
     
-    // Directly fetch from the database without proper validation
     const response = await fetch(`${API_URL}/users/${currentUser.id}`, {
       headers: {
         'Authorization': token
@@ -380,7 +375,6 @@ function displayTransactions(transactions) {
       row.classList.add('transaction-received');
     }
     
-    // Vulnerable to XSS via transaction note
     row.innerHTML = `
       <td>${tx.id}</td>
       <td>${tx.sender_id === currentUser.id ? 'Sent' : 'Received'}</td>
@@ -399,8 +393,6 @@ messageForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   
   const message = document.getElementById('message-text').value;
-  
-  // Vulnerable to parameter tampering - using client-side user ID
   const user_id = messageUserId.value;
   
   try {
@@ -461,7 +453,6 @@ btnSearch.addEventListener('click', async () => {
         const div = document.createElement('div');
         div.className = 'user-result';
         
-        // Vulnerable to XSS if term is reflected in results
         div.innerHTML = `
           <p><strong>ID:</strong> ${user.id}</p>
           <p><strong>Username:</strong> ${user.username}</p>
@@ -535,7 +526,6 @@ if (btnExportUsers) {
     try {
       const token = localStorage.getItem('token');
       
-      // Vulnerable to parameter tampering - URL parameter can be modified
       const response = await fetch(`${API_URL}/admin/export-users?isAdmin=true`, {
         headers: {
           'Authorization': token
@@ -642,7 +632,6 @@ function displayAdminMessages(messages) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'admin-message';
     
-    // Vulnerable to XSS via message content
     messageDiv.innerHTML = `
       <div class="admin-message-meta">
         From: ${msg.username || 'Unknown'} (ID: ${msg.user_id}) - ${new Date(msg.date).toLocaleString()}
@@ -661,7 +650,7 @@ document.querySelector('.navbar-brand').addEventListener('click', function(e) {
   feedbackModal.show();
 });
 
-// Submit feedback - vulnerable to stored XSS in headless browser
+// Submit feedback
 document.getElementById('btn-feedback-submit').addEventListener('click', async () => {
   const email = document.getElementById('feedback-email').value;
   const message = document.getElementById('feedback-message').value;
@@ -690,7 +679,7 @@ document.getElementById('btn-feedback-submit').addEventListener('click', async (
   }
 });
 
-// Handle profile update - vulnerable to second-order SQL injection
+// Handle profile update
 document.getElementById('profile-update-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   

@@ -1,24 +1,14 @@
-# DarkVault - Deliberately Vulnerable Banking Web Application
+# DarkVault
 
-**WARNING: This application is intentionally vulnerable and should NEVER be deployed in a production environment or exposed to the internet. It is designed purely for educational purposes to demonstrate web application security vulnerabilities.**
+A deliberately vulnerable banking application for security training and education.
 
-## Overview
+> **⚠️ WARNING: This application contains intentional security vulnerabilities. Never deploy in production environments or expose to the internet.**
 
-DarkVault is a deliberately vulnerable banking web application that demonstrates various web application security vulnerabilities, including:
+## About DarkVault
 
-- SQL Injection
-- Cross-Site Scripting (XSS)
-- Cross-Site Request Forgery (CSRF)
-- Authentication and Authorization flaws
-- Insecure Direct Object References (IDOR)
-- Command Injection
-- Unrestricted File Upload
-- Insecure JWT implementation
-- Race conditions
-- Information disclosure
-- and more...
+DarkVault simulates a banking application with numerous security flaws designed for practicing penetration testing techniques, understanding common web vulnerabilities, and training in secure coding practices.
 
-## Installation
+## Quick Start
 
 ```bash
 # Install dependencies
@@ -28,94 +18,96 @@ npm install
 npm start
 ```
 
-The application will run on http://localhost:3000
+Application will be available at: http://localhost:3000
 
-## Default Credentials
+A separate internal admin service runs on port 3001 (intentionally vulnerable to SSRF attacks).
 
-- Admin: username `admin`, password `admin123`
-- User: username `alice`, password `password123`
-- User: username `bob`, password `bobpassword`
+## Default Access Credentials
 
-## Vulnerabilities Included
+| Account Type | Username | Password      |
+|--------------|----------|---------------|
+| Admin        | admin    | admin123      |
+| User         | alice    | password123   |
+| User         | bob      | bobpassword   |
 
-### Authentication & Authorization
+## Technical Architecture
 
-- Plaintext password storage
-- Weak session management
-- Missing password policies
-- JWT token with debug mode bypass
-- Insecure token storage in localStorage
-- Admin role identification in JWT token
+- Backend: Node.js with Express
+- Database: SQLite
+- Frontend: Plain JavaScript
+- Authentication: JWT-based
+- Supplementary: Internal admin service (SSRF target)
+
+## Utility Scripts
+
+- `race-condition-demo.js`: Demonstrates race condition exploitation
+- `reset-users.sh`: Resets user accounts to their default state
+
+## Security Vulnerabilities
+
+### Authentication & Session Management
+- Plaintext credential storage
+- Weak JWT implementation with exposed secrets
+- Debug mode authentication bypass
+- Client-side token storage in localStorage
+- Insufficient password policies
 
 ### Injection Vulnerabilities
+- SQL Injection (login, registration, search)
+- Command Injection (admin reports)
+- Cross-Site Scripting (URL parameters, search, transaction notes)
+- Prototype pollution
 
-- SQL Injection in login, register, and search functions
-- Command Injection in admin report feature
-- XSS in URL parameters, user search, transaction notes
-- XSS in admin message system
+### Access Control
+- Insecure Direct Object References (IDOR)
+- Missing function-level authorization
+- Privilege escalation via parameter tampering
+- Exposed internal endpoints
 
-### Broken Access Control
-
-- Horizontal privilege escalation (IDOR) on user profiles
-- Vertical privilege escalation via parameter manipulation
-- Missing function level access control
-- Authentication bypass via debug parameter
-
-### Sensitive Data Exposure
-
-- Plaintext passwords in database
-- Verbose error messages
+### Data Protection
+- Unencrypted sensitive information
+- Detailed error messages revealing implementation details
+- Exposed API keys and secrets
 - Information leakage in API responses
-- Insecure JWT token
 
-### CSRF Vulnerabilities
+### Request Forgery
+- CSRF vulnerabilities in transaction functions
+- Missing origin/referer validation
+- Insecure cookie configuration
+- SSRF vulnerabilities exposing internal services
 
-- No CSRF tokens on forms
-- Vulnerable transfer function
-- No validation of origin/referer
-- Insecure cookie settings
-
-### Insecure File Upload
-
-- No validation of file extensions
-- No content-type checking
-- Path traversal vulnerability
-- No size limitations
+### File Operations
+- Insecure file upload implementation
+- Path traversal vulnerabilities
+- Insufficient file validation
 
 ### Business Logic Flaws
+- Missing balance validation in transfers
+- Race conditions in financial transactions
+- Transaction manipulation (negative amounts)
+- Inadequate validation controls
 
-- No balance validation on transfers (unlimited money)
-- Race conditions in transfer endpoint
-- Ability to transfer negative amounts
-- No transaction validation
+### API Security
+- Misconfigured CORS settings
+- Missing security headers
+- Excessive data exposure
+- Vulnerable dependencies
 
-### Web API Vulnerabilities
+## Training Exercises
 
-- Insecure CORS configuration
-- Missing/improper HTTP security headers
-- Excessive data exposure in API responses
-- Broken function level authorization
+1. Privilege escalation from regular user to admin
+2. Extract another user's sensitive information
+3. Bypass authentication with SQL injection
+4. Execute stored XSS via search functionality
+5. Achieve code execution via file upload
+6. Manipulate account balance through client-side attacks
+7. Perform CSRF attacks against transaction endpoints
+8. Execute OS commands via admin reporting feature
+9. Exploit race conditions to drain accounts
+10. Bypass security using debug parameters
+11. Access internal services via SSRF
+12. Manipulate objects through prototype pollution
 
-### Modern Database & Third-Party vulnerabilities 
+## Legal Notice
 
-- Vulnerable versions of dependencies
-- Missing query parameterization
-- No database connection pooling
-- Vulnerable JWT implementation
-
-## Suggested Exercises
-
-1. Login as a regular user and escalate privileges to admin
-2. Steal sensitive information from other users
-3. Perform SQL injection to bypass login
-4. Inject JavaScript via the search function
-5. Upload a malicious file to achieve code execution
-6. Manipulate the client-side balance
-7. Perform CSRF attacks on the transfer money function
-8. Execute command injection via the admin report feature
-9. Exploit race conditions to transfer more money than available
-10. Use the debug parameter to bypass authentication
-
-## Legal Disclaimer
-
-This application is designed for educational and ethical testing purposes only. The authors of this application are not responsible for any misuse or damage caused by using this application for malicious purposes. Always practice ethical hacking and obtain proper authorization before testing vulnerabilities on any system. 
+This application is provided for educational and ethical testing purposes only. The authors assume no liability for misuse or damage resulting from this software. Always practice ethical security testing and obtain proper authorization before testing vulnerabilities on any system. 
