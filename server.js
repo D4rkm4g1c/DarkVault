@@ -640,7 +640,12 @@ db.serialize(() => {
   )`);
   
   // Add bio/website/location columns to users table if they don't exist
-  db.run(`PRAGMA table_info(users)`, (err, columns) => {
+  db.all(`PRAGMA table_info(users)`, (err, columns) => {
+    if (err) {
+      console.error('Error checking table columns:', err);
+      return;
+    }
+    
     if (!columns.some(col => col.name === 'bio')) {
       db.run(`ALTER TABLE users ADD COLUMN bio TEXT`);
     }
