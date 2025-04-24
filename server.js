@@ -79,7 +79,8 @@ if (!fs.existsSync('uploads')) {
 // Setup Database
 const db = new sqlite3.Database('./bank.db', (err) => {
   if (err) {
-    console.error(err.message);
+    console.error('Database connection error:', err.message);
+    process.exit(1); // Exit if we can't connect to the database
   }
   console.log('Connected to the SQLite database.');
 });
@@ -208,9 +209,12 @@ app.post('/api/register', (req, res) => {
   // No validation on inputs - deliberately vulnerable to SQL injection
   const query = `INSERT INTO users (username, password, email) VALUES ('${escapedUsername}', '${escapedPassword}', '${escapedEmail}')`;
   
+  console.log('Executing SQL query:', query);
+  
   db.run(query, function(err) {
     if (err) {
       // Log the detailed error
+      console.error('Registration error:', err.message);
       logError('Registration', err, { username, email, query });
       return res.status(500).json({ error: err.message });
     }
@@ -440,6 +444,18 @@ app.get('/api/transactions', verifyToken, (req, res) => {
     }
     
     return res.status(200).json(transactions);
+  });
+});
+
+// Add a debug endpoint to list users (deliberately insecure)
+app.get('/api/debug/users', (req, res) => {
+  console.log('Debug endpoint called to check users table');
+  db.all('SELECT username FROM users', (err, rows) => {
+    if (err) {
+      console.error('Debug endpoint error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    return res.status(200).json({ users: rows });
   });
 });
 

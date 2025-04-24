@@ -132,11 +132,13 @@ registerForm.addEventListener('submit', async (e) => {
       alert('Registration successful! Please login.');
       loginTab.click();
     } else {
-      alert(data.error);
+      // Show detailed error message
+      console.error('Registration error:', data);
+      alert(`Registration error: ${data.error || 'Unknown error'}`);
     }
   } catch (error) {
     console.error('Register error:', error);
-    alert('An error occurred during registration');
+    alert(`Error during registration: ${error.message}`);
   }
 });
 
