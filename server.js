@@ -119,24 +119,24 @@ db.serialize(() => {
   db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
     if (!row) {
       // Plaintext password storage
-      db.run("INSERT INTO users (username, password, email, role, balance) VALUES ('admin', 'admin123', 'admin@darkvault.com', 'admin', 100000.00)");
-      db.run("INSERT INTO users (username, password, email, role) VALUES ('alice', 'password123', 'alice@example.com', 'user')");
-      db.run("INSERT INTO users (username, password, email, role) VALUES ('bob', 'bobpassword', 'bob@example.com', 'user')");
+      db.run(`INSERT INTO users (username, password, email, role, balance) VALUES ("admin", "admin123", "admin@darkvault.com", "admin", 100000.00)`);
+      db.run(`INSERT INTO users (username, password, email, role) VALUES ("alice", "password123", "alice@example.com", "user")`);
+      db.run(`INSERT INTO users (username, password, email, role) VALUES ("bob", "bobpassword", "bob@example.com", "user")`);
       console.log("Added default users");
       
       // Add some sample messages
       const now = new Date().toISOString();
-      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (2, 'Hello admin, I can\'t access my account. Please help!', '${now}')`);
-      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (3, '<script>alert("XSS in admin message")</script>', '${now}')`);
-      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (2, 'Is there a way to increase my transfer limit?', '${now}')`);
+      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (2, "Hello admin, I can't access my account. Please help!", "${now}")`);
+      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (3, "<script>alert('XSS in admin message')</script>", "${now}")`);
+      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (2, "Is there a way to increase my transfer limit?", "${now}")`);
       console.log("Added sample messages");
       
       // Add some sample transactions
       const yesterday = new Date(Date.now() - 86400000).toISOString();
       const twoDaysAgo = new Date(Date.now() - 172800000).toISOString();
-      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (2, 3, 150.00, '${yesterday}', 'Dinner payment')`);
-      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (3, 2, 250.00, '${twoDaysAgo}', 'Concert tickets')`);
-      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (1, 2, 1000.00, '${now}', 'Welcome bonus! <script>alert("XSS in transaction")</script>')`);
+      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (2, 3, 150.00, "${yesterday}", "Dinner payment")`);
+      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (3, 2, 250.00, "${twoDaysAgo}", "Concert tickets")`);
+      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (1, 2, 1000.00, "${now}", "Welcome bonus! <script>alert('XSS in transaction')</script>")`);
       console.log("Added sample transactions");
     }
   });
