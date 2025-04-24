@@ -1744,7 +1744,7 @@ app.listen(PORT, () => {
   console.log(`It is intended for educational purposes only.`);
   console.log(`Error logs will be written to logs/error.log`);
   
-  // Start the bots
-  setupAdminBot();
-  setupHeadlessFeedbackBot();
+  // Bots disabled
+  // setupAdminBot();
+  // setupHeadlessFeedbackBot();
 }); 
