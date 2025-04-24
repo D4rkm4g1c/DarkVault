@@ -180,9 +180,7 @@ app.post('/api/login', (req, res) => {
         { expiresIn: '24h' }
       );
       
-      // Set token in cookie
-      res.cookie('token', token, { httpOnly: false });
-      
+      // No cookie - only return the token in response
       return res.status(200).json({
         success: true,
         message: 'Login successful',
@@ -236,7 +234,7 @@ app.post('/api/register', (req, res) => {
 
 // Middleware for token verification - with bypass
 const verifyToken = (req, res, next) => {
-  const token = req.cookies.token || req.headers['authorization'];
+  const token = req.headers['authorization'];
   
   if (!token) {
     // Vulnerable bypass - allows debug mode
@@ -268,6 +266,22 @@ app.get('/api/users/:id', verifyToken, (req, res) => {
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Add secret information if accessing the admin profile with a bot token
+    if (user.id === 1 && user.role === 'admin') {
+      // Check if this is a bot token by looking for special fields in the JWT
+      if (req.user.privilegeLevel === 'system') {
+        // This is the headless feedback bot token
+        user.secretInfo = "HEADLESS_BOT_SECRET: Access to all system credentials and database backups at /admin/system/backups";
+        user.botType = "headless";
+        user.secretKey = "SYS_KEY_8675309";
+      } else if (req.user.id === 1 && req.user.role === 'admin' && !req.user.privilegeLevel) {
+        // This is the admin message bot token
+        user.secretInfo = "MESSAGE_BOT_SECRET: Admin credentials for the production database at db.example.com";
+        user.botType = "message";
+        user.secretKey = "ADMIN_KEY_12345";
+      }
     }
     
     // Returns all user data including sensitive information

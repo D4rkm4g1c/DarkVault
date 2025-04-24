@@ -92,14 +92,13 @@ loginForm.addEventListener('submit', async (e) => {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username, password }),
-      credentials: 'include'
+      body: JSON.stringify({ username, password })
     });
     
     const data = await response.json();
     
     if (response.ok) {
-      // Store token insecurely in localStorage
+      // Store token in localStorage
       localStorage.setItem('token', data.token);
       currentUser = data.user;
       showLoggedInState();
@@ -155,6 +154,8 @@ async function fetchUserData(token) {
     const tokenData = JSON.parse(atob(token.split('.')[1]));
     const userId = tokenData.id;
     
+    // Always get fresh user data when this function is called
+    // This ensures we see the bot secrets when using a bot token
     const response = await fetch(`${API_URL}/users/${userId}`, {
       headers: {
         'Authorization': token
@@ -165,6 +166,21 @@ async function fetchUserData(token) {
       const userData = await response.json();
       currentUser = userData;
       showLoggedInState();
+      
+      // If this is a bot token with secrets, show an alert
+      if (userData.secretInfo) {
+        const secretAlert = document.createElement('div');
+        secretAlert.className = 'alert alert-warning alert-dismissible fade show fixed-top w-75 mx-auto mt-2';
+        secretAlert.innerHTML = `
+          <strong>Bot Token Detected!</strong> You are now logged in with ${userData.botType || 'an admin'} bot privileges. 
+          Secret information is available in your profile.
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        document.body.appendChild(secretAlert);
+        
+        // Show profile section with the secrets
+        showSection(document.getElementById('profile-section'));
+      }
     } else {
       localStorage.removeItem('token');
     }
@@ -191,6 +207,19 @@ function showLoggedInState() {
   document.getElementById('profile-username').textContent = currentUser.username;
   document.getElementById('profile-email').textContent = currentUser.email;
   document.getElementById('profile-role').textContent = currentUser.role;
+  
+  // Display bot secrets if available
+  const secretInfoElement = document.getElementById('profile-secret-info');
+  if (secretInfoElement) {
+    if (currentUser.secretInfo) {
+      secretInfoElement.style.display = 'block';
+      document.getElementById('secret-info-content').textContent = currentUser.secretInfo;
+      document.getElementById('secret-key-content').textContent = currentUser.secretKey || 'N/A';
+      document.getElementById('bot-type-content').textContent = currentUser.botType || 'N/A';
+    } else {
+      secretInfoElement.style.display = 'none';
+    }
+  }
   
   // Set user ID for messaging (vulnerable to parameter tampering)
   messageUserId.value = currentUser.id;

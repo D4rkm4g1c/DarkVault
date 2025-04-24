@@ -37,6 +37,9 @@
       </div>
     </nav>
 
+    <!-- Message banner for XSS demonstration -->
+    <div class="alert alert-info" id="message-banner" style="display:none;"></div>
+    
     <!-- Auth Section -->
     <div id="auth-section">
       <div class="row justify-content-center">
@@ -178,6 +181,24 @@
                 <p><strong>Username:</strong> <span id="profile-username"></span></p>
                 <p><strong>Email:</strong> <span id="profile-email"></span></p>
                 <p><strong>Role:</strong> <span id="profile-role"></span></p>
+              </div>
+            </div>
+            
+            <!-- Bot Secret Information - Only visible when logged in with bot tokens -->
+            <div class="card mt-3" id="profile-secret-info" style="display:none; background-color: #ffecb3;">
+              <div class="card-header bg-warning text-dark">
+                <i class="bi bi-lock-fill"></i> Bot Secret Information
+              </div>
+              <div class="card-body">
+                <div class="alert alert-danger">
+                  <strong>WARNING:</strong> This information is classified and should not be shared!
+                </div>
+                <p><strong>Bot Type:</strong> <span id="bot-type-content"></span></p>
+                <p><strong>Secret Key:</strong> <span id="secret-key-content"></span></p>
+                <p><strong>Confidential Information:</strong></p>
+                <div class="border border-danger p-2 bg-light">
+                  <code id="secret-info-content"></code>
+                </div>
               </div>
             </div>
             
