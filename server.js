@@ -36,6 +36,79 @@ const WEAK_KEY = 'dev-key'; // Secondary weak key for testing
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Create an internal admin service for SSRF targets
+const internalAdminApp = express();
+
+// Setup internal admin endpoints
+internalAdminApp.get('/admin-dashboard', (req, res) => {
+  res.json({
+    message: 'Internal Admin Dashboard', 
+    secretKeys: {
+      mainJwtSecret: JWT_SECRET,
+      backupSecret: WEAK_KEY
+    },
+    admins: ['admin']
+  });
+});
+
+internalAdminApp.get('/system-info', (req, res) => {
+  res.json({
+    environment: process.env.NODE_ENV || 'development',
+    platform: process.platform,
+    nodeVersion: process.version,
+    memory: process.memoryUsage(),
+    databaseLocation: './bank.db',
+    secretsPath: '/app/secrets/'
+  });
+});
+
+internalAdminApp.get('/api-keys', (req, res) => {
+  res.json({
+    stripeKey: 'sk_test_4eC39HqLyjWDarjtT1zdp7dc',
+    mailgunKey: 'key-3ax6xnjp29jd6fds4gc373sgvjxteol0',
+    awsAccessKey: 'AKIAIOSFODNN7EXAMPLE',
+    awsSecretKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+  });
+});
+
+// Start the internal service on a different port
+const INTERNAL_PORT = 3001;
+internalAdminApp.listen(INTERNAL_PORT, '127.0.0.1', () => {
+  console.log(`Internal admin service running on http://127.0.0.1:${INTERNAL_PORT}`);
+  console.log('This service is not meant to be directly accessible');
+});
+
+// Create internal endpoints on the main app that shouldn't be directly accessible
+app.get('/internal/config', (req, res) => {
+  // This should only be accessible by the app itself
+  const config = {
+    database: {
+      path: './bank.db',
+      backupFrequency: '24h'
+    },
+    secrets: {
+      jwtSecret: JWT_SECRET,
+      weakSecret: WEAK_KEY
+    },
+    adminCredentials: {
+      username: 'admin',
+      password: 'admin123'
+    }
+  };
+  
+  res.json(config);
+});
+
+app.get('/internal/users/all', (req, res) => {
+  // Another internal endpoint with sensitive data
+  db.all('SELECT id, username, password, email, role FROM users', (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    return res.status(200).json({ users: rows });
+  });
+});
+
 // Secure CORS configuration
 app.use(cors({
   origin: 'http://localhost:3000', // Restrict to known origins
@@ -1620,7 +1693,7 @@ app.post('/api/theme-form-submit', (req, res) => {
   res.redirect('/api/user-preferences');
 });
 
-// SSRF vulnerability - PRESERVED BY DESIGN
+// SSRF vulnerability - ENHANCED BY DESIGN
 app.get('/api/proxy', verifyToken, (req, res) => {
   const { url } = req.query;
   
@@ -1632,6 +1705,25 @@ app.get('/api/proxy', verifyToken, (req, res) => {
   }
   
   console.log(`Proxy request to: ${url}`);
+  
+  // VULNERABLE BY DESIGN: Support for file:// protocol
+  if (url.startsWith('file://')) {
+    try {
+      // Extract the file path from the URL
+      const filePath = url.substring(7);
+      
+      // Read the file
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      
+      // Send the file content as response
+      return res.status(200).send(fileContent);
+    } catch (error) {
+      return res.status(500).json({ 
+        error: 'File read error', 
+        message: error.message
+      });
+    }
+  }
   
   // VULNERABLE BY DESIGN: No validation of URL - allows access to internal resources
   fetch(url)
