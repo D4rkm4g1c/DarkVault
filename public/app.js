@@ -42,6 +42,12 @@ const btnRunReport = document.getElementById('btn-run-report');
 const reportName = document.getElementById('report-name');
 const messageBanner = document.getElementById('message-banner');
 
+// Exploit chain elements
+const exploitProgress = document.getElementById('exploit-progress');
+const exploitStage = document.getElementById('exploit-stage');
+const exploitHint = document.getElementById('exploit-hint');
+const btnCheckProgress = document.getElementById('btn-check-progress');
+
 // Check if there's a message in URL (vulnerable to XSS)
 window.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
@@ -228,6 +234,9 @@ function showLoggedInState() {
   if (currentUser.role === 'admin') {
     adminSection.style.display = 'block';
   }
+  
+  // Check exploit chain progress
+  checkExploitProgress();
   
   // Show home section by default
   showSection(homeSection);
@@ -712,4 +721,46 @@ document.getElementById('profile-update-form').addEventListener('submit', async 
     console.error('Profile update error:', error);
     alert('An error occurred while updating profile');
   }
-}); 
+});
+
+// Function to check exploit chain progress
+async function checkExploitProgress() {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  
+  try {
+    const response = await fetch(`${API_URL}/exploit-status`, {
+      headers: {
+        'Authorization': token
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Update the progress bar
+      exploitProgress.style.width = data.completion;
+      exploitStage.textContent = data.status;
+      exploitHint.textContent = data.hint;
+      
+      // Dynamically update the progress bar color based on completion
+      if (data.completion === '100%') {
+        exploitProgress.classList.remove('bg-danger', 'bg-warning', 'bg-info');
+        exploitProgress.classList.add('bg-success');
+      } else if (parseInt(data.completion) > 60) {
+        exploitProgress.classList.remove('bg-danger', 'bg-warning', 'bg-success');
+        exploitProgress.classList.add('bg-info');
+      } else if (parseInt(data.completion) > 20) {
+        exploitProgress.classList.remove('bg-danger', 'bg-info', 'bg-success');
+        exploitProgress.classList.add('bg-warning');
+      }
+    }
+  } catch (error) {
+    console.error('Error checking exploit progress:', error);
+  }
+}
+
+// Add event listener for the check progress button
+if (btnCheckProgress) {
+  btnCheckProgress.addEventListener('click', checkExploitProgress);
+} 

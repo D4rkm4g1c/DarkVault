@@ -93,6 +93,35 @@
 
     <!-- Main App Section (Hidden until login) -->
     <div id="app-section" style="display:none">
+      <!-- User Info Summary -->
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <div class="card shadow">
+            <div class="card-body">
+              <h4>Welcome, <span id="summary-username">User</span></h4>
+              <p>Role: <span id="summary-role">user</span></p>
+              <p>Balance: $<span id="summary-balance">0.00</span></p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <!-- New Exploit Chain Status Card -->
+          <div class="card shadow">
+            <div class="card-header bg-dark text-white">
+              <h5 class="mb-0">Exploit Chain Status</h5>
+            </div>
+            <div class="card-body">
+              <div class="progress mb-3">
+                <div id="exploit-progress" class="progress-bar bg-danger" role="progressbar" style="width: 0%"></div>
+              </div>
+              <p><strong>Current Stage:</strong> <span id="exploit-stage">Not started</span></p>
+              <p><strong>Hint:</strong> <span id="exploit-hint">Start exploring vulnerabilities</span></p>
+              <button id="btn-check-progress" class="btn btn-sm btn-dark">Check Progress</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Home Section -->
       <div id="home-section" class="app-page">
         <h2>Welcome to DarkVault</h2>

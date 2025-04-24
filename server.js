@@ -49,7 +49,31 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Vulnerable file upload configuration
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/');
+    // Modified: Now we check for a secret token that reveals a hidden upload path
+    // This secret must be found through another vulnerability first
+    const secretPath = req.headers['x-upload-path'] || '';
+    
+    // Create a secret directory for executable uploads that must be discovered
+    // Only files uploaded to this path will be executable
+    if (!fs.existsSync('uploads/executable')) {
+      fs.mkdirSync('uploads/executable', { recursive: true });
+    }
+    
+    // Basic uploads go to regular directory, uploads with the secret token go to executable directory
+    if (secretPath === 'executable_7bc93a' && req.query.xMode === 'true') {
+      cb(null, 'uploads/executable/');
+      
+      // Store this progress in the user's exploit chain status
+      if (req.user) {
+        req.user.exploitStage = 'upload_success';
+        // Set a flag that can be checked by the command injection vulnerability
+        if (req.user.role === 'admin' || req.user.role === 'bot') {
+          req.user.exploitStage = 'command_ready';
+        }
+      }
+    } else {
+      cb(null, 'uploads/');
+    }
   },
   filename: function (req, file, cb) {
     // Still vulnerable to path traversal, but prevents server crashes
@@ -62,7 +86,31 @@ const storage = multer.diskStorage({
     cb(null, originalname);
   }
 });
-const upload = multer({ storage: storage });
+
+// Note: restrictedExtensions is only enforced for the normal upload directory
+// This creates a multi-stage challenge - first discover the secret directory,
+// then you can upload any file type
+const restrictedExtensions = ['.php', '.js', '.exe', '.jsp', '.asp'];
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: function(req, file, cb) {
+    // Modified: Basic file extension filtering for normal uploads
+    // But files can still be uploaded to the executable directory if the secret is known
+    const secretPath = req.headers['x-upload-path'] || '';
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    if (secretPath === 'executable_7bc93a' && req.query.xMode === 'true') {
+      // Allow any file if the secret path is used
+      return cb(null, true);
+    } else if (restrictedExtensions.includes(ext)) {
+      // Block dangerous extensions for normal uploads
+      return cb(null, false);
+    }
+    
+    return cb(null, true);
+  }
+});
 
 // Create uploads directory if it doesn't exist
 if (!fs.existsSync('uploads')) {
@@ -107,6 +155,29 @@ db.serialize(() => {
     message TEXT,
     date TEXT
   )`);
+  
+  // New table to track exploit chain progress
+  db.run(`CREATE TABLE IF NOT EXISTS exploit_chain (
+    user_id INTEGER PRIMARY KEY,
+    stage TEXT DEFAULT 'not_started',
+    discovered_secrets TEXT,
+    last_updated TEXT
+  )`);
+  
+  // Create secrets table for chain requirements
+  db.run(`CREATE TABLE IF NOT EXISTS secrets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_name TEXT UNIQUE,
+    key_value TEXT
+  )`);
+  
+  // Insert initial secrets
+  db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
+    if (!row) {
+      db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_9a74c8')");
+      db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'idor_access_9d731b')");
+    }
+  });
 
   // Insert admin and test users if they don't exist
   db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
@@ -152,10 +223,18 @@ app.use((req, res, next) => {
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   
-  // Vulnerable SQL query - no parameterization
-  // Using double quotes for string literals to avoid issues with apostrophes
-  // Example exploit: username = "admin" --" will bypass password check
-  const query = `SELECT * FROM users WHERE username = "${username}" AND password = "${password}"`;
+  // Modified: SQL injection now requires knowledge of a secret prefix
+  // Basic SQL injection like "admin" --" won't work anymore
+  // Added requirement for a specific x-chain-key header that can be found elsewhere in the app
+  const chainKey = req.headers['x-chain-key'] || '';
+  
+  // Log attempt for debugging
+  console.log(`Login attempt: ${username}, chain key: ${chainKey}`);
+  
+  // Vulnerable SQL query - now requires the chain key prefix
+  // Example exploit: username = "chain_9a74c8" OR username = "admin" --"
+  // The "chain_9a74c8" value must be discovered elsewhere in the application
+  const query = `SELECT * FROM users WHERE (username = "${username}" AND password = "${password}") OR (username = "${username}" AND "${chainKey}" = "chain_9a74c8")`;
   
   db.get(query, (err, user) => {
     if (err) {
@@ -228,8 +307,9 @@ const verifyToken = (req, res, next) => {
   const token = req.headers['authorization'];
   
   if (!token) {
-    // Vulnerable bypass - allows debug mode with bot permissions instead of admin
-    if (req.query.debug === 'true') {
+    // Modified: Now requires both debug AND a special HTTP header
+    // This creates a prerequisite chain where you need information from somewhere else
+    if (req.query.debug === 'true' && req.headers['x-exploit-chain'] === 'stage1') {
       db.get("SELECT id, username, role FROM users WHERE username = 'admin_message_bot'", (err, botUser) => {
         if (err || !botUser) {
           return res.status(401).json({ message: 'Debug mode failed to authenticate' });
@@ -242,27 +322,117 @@ const verifyToken = (req, res, next) => {
           role: botUser.role,
           botType: 'message_bot'
         };
-        return next();
+        
+        // Load exploit chain progress for this bot user
+        loadExploitChainProgress(req, res, next);
       });
     } else {
       return res.status(401).json({ message: 'No token provided' });
     }
   } else {
     try {
+      // Verify the token
       const decoded = jwt.verify(token.replace('Bearer ', ''), JWT_SECRET);
+      
+      // Set user info from token
       req.user = decoded;
-      next();
+      
+      // Load exploit chain progress for this user
+      loadExploitChainProgress(req, res, next);
+      
     } catch (err) {
       return res.status(401).json({ message: 'Invalid token' });
     }
   }
 };
 
+// Helper function to load exploit chain progress
+function loadExploitChainProgress(req, res, next) {
+  if (!req.user || !req.user.id) {
+    return next();
+  }
+  
+  // Get the exploit chain progress for this user
+  db.get(`SELECT * FROM exploit_chain WHERE user_id = ?`, [req.user.id], (err, chain) => {
+    if (err) {
+      console.error('Error loading exploit chain:', err);
+    }
+    
+    if (chain) {
+      // Set the exploit stage on the user object
+      req.user.exploitStage = chain.stage;
+      
+      // Parse the discovered secrets if any
+      try {
+        req.user.discoveredSecrets = JSON.parse(chain.discovered_secrets || '{}');
+      } catch (e) {
+        req.user.discoveredSecrets = {};
+      }
+    } else {
+      // Initialize with default values
+      req.user.exploitStage = 'not_started';
+      req.user.discoveredSecrets = {};
+      
+      // Create a new record for this user
+      const now = new Date().toISOString();
+      db.run(
+        `INSERT INTO exploit_chain (user_id, stage, discovered_secrets, last_updated) VALUES (?, ?, ?, ?)`,
+        [req.user.id, 'not_started', '{}', now]
+      );
+    }
+    
+    // Add a function to update the exploit chain progress
+    req.user.updateExploitStage = function(newStage, discoveredSecret = null) {
+      // Update the stage
+      req.user.exploitStage = newStage;
+      
+      // Add the discovered secret if provided
+      if (discoveredSecret) {
+        req.user.discoveredSecrets[discoveredSecret.key] = discoveredSecret.value;
+      }
+      
+      // Update in database
+      const now = new Date().toISOString();
+      db.run(
+        `UPDATE exploit_chain SET stage = ?, discovered_secrets = ?, last_updated = ? WHERE user_id = ?`,
+        [newStage, JSON.stringify(req.user.discoveredSecrets), now, req.user.id]
+      );
+    };
+    
+    return next();
+  });
+}
+
 // Get user profile - Information disclosure
 app.get('/api/users/:id', verifyToken, (req, res) => {
   const id = req.params.id;
   
-  // No authorization check - any authenticated user can access any profile
+  // Modified: Now implement a chain-based IDOR that requires specific knowledge
+  // Users can only access their own profile by default
+  // To access other profiles, they need to have completed other steps in the chain
+  const canAccessAnyProfile = 
+    // They've found the chain key through SQL injection
+    req.user.exploitStage === 'found_chain_key' ||
+    // Or they have the secret token
+    req.headers['x-profile-access'] === 'idor_access_9d731b' ||
+    // Or they're an admin
+    req.user.role === 'admin' ||
+    // Or they're accessing their own profile
+    req.user.id.toString() === id;
+  
+  if (!canAccessAnyProfile) {
+    // If they're not authorized but have added a special query param, reveal a hint
+    if (req.query.access === 'true') {
+      return res.status(403).json({ 
+        message: 'Access denied',
+        hint: 'You need to find the x-profile-access header value first. Try SQL injection on the search endpoint.'
+      });
+    }
+    return res.status(403).json({ message: 'Unauthorized' });
+  }
+  
+  // If we get here, the user is allowed to access the profile
+  // Still vulnerable to IDOR, but requires specific chain knowledge
   db.get(`SELECT * FROM users WHERE id = ${id}`, (err, user) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -272,37 +442,35 @@ app.get('/api/users/:id', verifyToken, (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    // Add relevant information based on user type
-    if (user.id === 1 && user.role === 'admin') {
-      // This is the actual admin user
-      user.secretInfo = "ADMIN_SECRET: Full access to all system resources";
-    } else if (user.role === 'bot') {
-      // Check bot type from the token
-      if (req.user.botType === 'feedback_bot' && req.user.id === user.id) {
-        // This is the feedback bot accessing its own profile
-        user.secretInfo = "FEEDBACK_BOT_SECRET: Limited access to feedback management system";
-        user.botType = "feedback";
-        user.secretKey = "BOT_FB_KEY_8675309";
-        user.FLAG = "DARKVAULT_BOT_FLAG{f33db4ck_b0t_c0mpr0m1s3d}";
-      } else if (req.user.botType === 'message_bot' && req.user.id === user.id) {
-        // This is the message bot accessing its own profile
-        user.secretInfo = "MESSAGE_BOT_SECRET: Limited access to message management system";
-        user.botType = "message";
-        user.secretKey = "BOT_MSG_KEY_12345";
-        user.FLAG = "DARKVAULT_BOT_FLAG{m3ss4g3_b0t_c0mpr0m1s3d}";
-      } else {
-        // Someone else is accessing the bot profile
-        if (user.username === 'admin_feedback_bot') {
-          user.botType = "feedback";
-          user.FLAG = "DARKVAULT_BOT_FLAG{f33db4ck_b0t_c0mpr0m1s3d}";
-        } else if (user.username === 'admin_message_bot') {
-          user.botType = "message";
-          user.FLAG = "DARKVAULT_BOT_FLAG{m3ss4g3_b0t_c0mpr0m1s3d}";
+    // If this is a successful IDOR exploitation of another user's profile
+    // (accessing a profile that isn't your own), update the exploit stage
+    if (req.user.id.toString() !== id) {
+      // They've successfully exploited IDOR
+      if (req.user) {
+        req.user.updateExploitStage('idor_success', {
+          key: 'idor_success',
+          value: 'true'
+        });
+        
+        // If they've also completed the upload step, add the command stage hint
+        if (req.user.exploitStage === 'upload_success') {
+          req.user.updateExploitStage('command_ready');
         }
+      }
+      
+      // Reveal the special token through IDOR
+      db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_exploit_7b491c3') ON CONFLICT(key_name) DO NOTHING");
+    }
+    
+    // Add bot secrets to the response if appropriate
+    if (user.role === 'bot' && (req.user.role === 'admin' || req.user.id === user.id)) {
+      user.secretInfo = 'This bot is used for automated admin tasks. It has elevated privileges.';
+      if (user.username === 'admin_message_bot') {
+        user.secretKey = 'bot_key_8e4a1c';
+        user.botType = 'message_bot';
       }
     }
     
-    // Returns all user data including sensitive information
     return res.status(200).json(user);
   });
 });
@@ -355,26 +523,67 @@ app.post('/api/transfer', verifyToken, (req, res) => {
 
 // Admin feature - Vulnerable to command injection
 app.post('/api/admin/run-report', verifyToken, (req, res) => {
-  if (req.user.role !== 'admin') {
+  // Only allow admin or bot users
+  if (req.user.role !== 'admin' && req.user.role !== 'bot') {
     return res.status(403).json({ message: 'Unauthorized' });
   }
   
   const { report_name } = req.body;
   
-  // Vulnerable to command injection
-  // Example payloads:
-  // Linux: "fake; cat /etc/passwd"
-  // Windows: "fake & whoami"
-  exec(`node scripts/reports/${report_name}.js`, (error, stdout, stderr) => {
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
+  // Modified: Command injection now requires a special token in the request
+  // that would need to be found through a previous exploit
+  // Also requires that the user has accessed a specific API endpoint first
+  const exploit_token = req.headers['x-exploit-token'] || '';
+  
+  // Create scripts directory if it doesn't exist
+  if (!fs.existsSync('scripts/reports')) {
+    fs.mkdirSync('scripts/reports', { recursive: true });
+  }
+  
+  // Check if the user has discovered the secret token elsewhere in the app
+  // This requires chaining exploits - first find the token, then use it here
+  if (exploit_token !== 'cmd_exploit_7b491c3' && !report_name.includes('cmd_exploit_7b491c3')) {
+    // If token is missing, create a file with just a console.log
+    fs.writeFileSync(`scripts/reports/${report_name}.js`, 'console.log("Report generated with no data");');
     
-    return res.status(200).json({
-      success: true,
-      output: stdout
+    // Run the harmless script instead - this prevents direct command injection
+    exec(`node scripts/reports/${report_name}.js`, (error, stdout, stderr) => {
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(200).json({ output: stdout });
     });
-  });
+  } else {
+    // If correct token found, command injection is possible - but still needs certain prerequisites
+    // Check if the user has triggered the prerequisite step
+    const hasPrerequisite = req.user.exploitStage === 'command_ready' || 
+                          report_name.startsWith('safe_') || 
+                          req.headers['x-exploit-stage'] === 'command_ready';
+    
+    if (hasPrerequisite) {
+      // Vulnerable to command injection
+      exec(`node scripts/reports/${report_name}.js`, (error, stdout, stderr) => {
+        if (error) {
+          return res.status(500).json({ error: error.message });
+        }
+        
+        // Mark the exploit chain as complete when command injection succeeds
+        if (req.user) {
+          req.user.updateExploitStage('command_success', {
+            key: 'command_injection',
+            value: 'success'
+          });
+        }
+        
+        return res.status(200).json({ output: stdout });
+      });
+    } else {
+      return res.status(403).json({ 
+        message: 'Exploit chain incomplete', 
+        hint: 'You need to complete a prerequisite step first'
+      });
+    }
+  }
 });
 
 // File upload endpoint - vulnerable to unrestricted file upload
@@ -383,35 +592,120 @@ app.post('/api/upload', verifyToken, upload.single('file'), (req, res) => {
     return res.status(400).json({ message: 'No file uploaded' });
   }
   
-  // Return path with no sanitization
-  return res.status(200).json({
-    success: true,
-    file_path: '/uploads/' + req.file.originalname
-  });
+  // Modified: Now provides different responses based on upload location
+  // This gives hints about the secret upload path when appropriate
+  const secretPath = req.headers['x-upload-path'] || '';
+  const isExecutableDir = secretPath === 'executable_7bc93a' && req.query.xMode === 'true';
+  
+  // Log the upload attempt
+  console.log(`File upload: ${req.file.originalname} to path: ${isExecutableDir ? 'executable' : 'regular'}`);
+  
+  // This reveals a hint about the command injection token if the file was uploaded to the executable directory
+  // Users must chain these vulnerabilities to progress
+  if (isExecutableDir) {
+    // Executable directory uploads can lead to command execution
+    // Store a value that unlocks the next step of the chain
+    if (req.user) {
+      req.user.updateExploitStage('upload_success', {
+        key: 'upload_success',
+        value: 'true'
+      });
+    }
+    
+    // Determine if this is a PHP file that might enable further exploitation
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    let nextHint = '';
+    
+    if (ext === '.php') {
+      // Provide a hint to the next stage of the attack chain
+      nextHint = 'File can execute commands. Command injection hint: cmd_exploit_7b491c3';
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: 'File uploaded to executable directory',
+      file_path: `/uploads/executable/${req.file.originalname}`,
+      hint: nextHint
+    });
+  } else {
+    // Regular upload directory can't execute code
+    return res.status(200).json({
+      success: true,
+      message: 'File uploaded successfully',
+      file_path: '/uploads/' + req.file.originalname
+    });
+  }
 });
 
 // Search for users - XSS vulnerable
 app.get('/api/search', verifyToken, (req, res) => {
-  const { term } = req.query;
+  // Validate the term exists
+  if (!req.query.term) {
+    return res.status(400).json({ message: 'Search term is required' });
+  }
   
+  const term = req.query.term;
+  
+  // Modified: Added a secret table with the chain key
+  // User must first perform SQL injection on search to find this secret
+  // Then use it to exploit the login endpoint
+  db.run("CREATE TABLE IF NOT EXISTS secrets (id INTEGER PRIMARY KEY, key_name TEXT, key_value TEXT)", () => {
+    // Insert the secret key if it doesn't exist
+    db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
+      if (!row) {
+        db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_9a74c8')");
+      }
+    });
+  });
+  
+  // Modified: Still vulnerable to SQL injection, but now contains clues about the secret chain
+  // Example exploit: " UNION SELECT id, key_name, key_value FROM secrets --
   console.log('Search term:', term);
   
-  // Vulnerable SQL query - extremely vulnerable to SQL injection
-  // Example exploit: " OR 1=1 --
-  // Example exploit: " UNION SELECT id, username, password FROM users --
-  const query = `SELECT id, username, email FROM users WHERE username LIKE "%${term}%" OR email LIKE "%${term}%"`;
-  
-  console.log('Executing search query:', query);
-  
-  db.all(query, (err, users) => {
-    if (err) {
-      console.error('Search error:', err.message);
-      return res.status(500).json({ error: err.message });
-    }
+  try {
+    // Vulnerable SQL query - extremely vulnerable to SQL injection
+    // This can be used to discover the chain_key needed for the login SQL injection
+    const query = `SELECT id, username, email FROM users WHERE username LIKE "%${term}%" OR email LIKE "%${term}%"`;
     
-    console.log('Search results:', users.length);
-    return res.status(200).json(users);
-  });
+    db.all(query, (err, users) => {
+      if (err) {
+        console.error('Search error:', err.message);
+        return res.status(500).json({ error: err.message });
+      }
+      
+      // Check if this is a successful exploit attempt that found the secret
+      const foundSecret = query.toLowerCase().includes('secrets') && users.some(u => u.key_name === 'chain_key');
+      
+      // If they've successfully found the secret through SQL injection, provide a hint to the next step
+      if (foundSecret) {
+        console.log('User discovered secret through SQL injection');
+        // Update the chain status for this user
+        if (req.user) {
+          req.user.updateExploitStage('found_chain_key', {
+            key: 'chain_key',
+            value: 'chain_9a74c8'
+          });
+          
+          // Reveal the upload path secret as well if they've gotten this far
+          if (!users.some(u => u.key_value && u.key_value.includes('executable'))) {
+            // Add a hint about the upload path
+            db.run("INSERT INTO secrets (key_name, key_value) VALUES ('upload_path', 'executable_7bc93a')");
+          }
+        }
+      }
+      
+      return res.status(200).json({
+        success: true, 
+        users: users,
+        // Add a hint if they're close but didn't quite get it
+        hint: query.toLowerCase().includes('union') && !foundSecret ? 
+          "You're on the right track. Try looking for other tables besides 'users'." : ""
+      });
+    });
+  } catch (error) {
+    console.error('Search error:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 // Admin message endpoint - IDOR vulnerable
@@ -841,6 +1135,62 @@ function setupHeadlessFeedbackBot() {
   setTimeout(simulateHeadlessBrowser, 15000); // 15 seconds after server start
   setInterval(simulateHeadlessBrowser, 2 * 60 * 1000); // Every 2 minutes
 }
+
+// New endpoint to show exploit chain progress and hints
+app.get('/api/exploit-status', verifyToken, (req, res) => {
+  // Extract the current user's progress in the exploit chain
+  const stage = req.user.exploitStage || 'not_started';
+  
+  // Define the stages of the exploit chain and corresponding hints
+  const stages = {
+    'not_started': {
+      status: 'You have not started the exploit chain yet.',
+      hint: 'Try exploring the search functionality with SQL injection. Look for secrets.',
+      completion: '0%'
+    },
+    'found_chain_key': {
+      status: 'You have discovered the chain key through SQL injection!',
+      hint: 'Try using this key with the login endpoint. You need to add a special header.',
+      completion: '20%'
+    },
+    'idor_success': {
+      status: 'You have successfully exploited IDOR vulnerability!',
+      hint: 'Look for secret tokens that can help with file uploads or command injection.',
+      completion: '40%'
+    },
+    'upload_success': {
+      status: 'You have successfully uploaded to the executable directory!',
+      hint: 'Your file can now execute. Try finding the command injection token.',
+      completion: '60%'
+    },
+    'command_ready': {
+      status: 'You have all prerequisites for command injection!',
+      hint: 'Use your token with the admin report endpoint to execute commands.',
+      completion: '80%'
+    },
+    'command_success': {
+      status: 'You have successfully exploited command injection!',
+      hint: 'You have completed the full exploit chain. Congratulations!',
+      completion: '100%'
+    }
+  };
+  
+  // Return the current status and appropriate hint
+  const currentStage = stages[stage] || stages.not_started;
+  return res.status(200).json({
+    current_stage: stage,
+    status: currentStage.status,
+    hint: currentStage.hint,
+    completion: currentStage.completion,
+    chain_steps: [
+      'SQL Injection to find secrets',
+      'Login bypass with chain key',
+      'IDOR to access other profiles',
+      'File upload to executable directory',
+      'Command injection with proper token'
+    ]
+  });
+});
 
 // Start the server
 app.listen(PORT, () => {
