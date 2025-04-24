@@ -57,6 +57,26 @@ const exploitStage = document.getElementById('exploit-stage');
 const exploitHint = document.getElementById('exploit-hint');
 const btnCheckProgress = document.getElementById('btn-check-progress');
 
+// Modern Web App Attack Chain UI elements
+const modernChainCard = document.getElementById('modern-web-attack-chain-card');
+const checkModernChainBtn = document.getElementById('check-modern-chain-progress');
+const getModernChainHintBtn = document.getElementById('get-modern-chain-hint');
+const modernChainHint = document.getElementById('modern-chain-hint');
+const modernChainProgress = document.getElementById('modern-chain-progress');
+const modernChainTools = document.getElementById('modern-chain-tools');
+const testGraphQLIntrospectionBtn = document.getElementById('test-graphql-introspection');
+const checkPrototypePollutionBtn = document.getElementById('check-prototype-pollution');
+const validateStolenTokenBtn = document.getElementById('validate-stolen-token');
+const stolenTokenInput = document.getElementById('stolen-token-input');
+
+// Stage status elements
+const stageDiscoveredDependency = document.getElementById('stage-discovered-dependency');
+const stageClientPollution = document.getElementById('stage-client-pollution');
+const stageGraphQLAccess = document.getElementById('stage-graphql-access');
+const stageBatchQuery = document.getElementById('stage-batch-query');
+const stageTokenExtraction = document.getElementById('stage-token-extraction');
+const stageMassCompromise = document.getElementById('stage-mass-compromise');
+
 // Check if there's a message in URL
 window.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
@@ -986,4 +1006,301 @@ function handleLoginSuccess(data) {
   
   // Check for leaderboard notification
   checkFirstTimeVisitor();
+}
+
+// Event listeners for Modern Web App Attack Chain
+if (checkModernChainBtn) {
+  checkModernChainBtn.addEventListener('click', checkModernChainProgress);
+}
+
+if (getModernChainHintBtn) {
+  getModernChainHintBtn.addEventListener('click', () => {
+    modernChainHint.style.display = modernChainHint.style.display === 'none' ? 'block' : 'none';
+  });
+}
+
+if (testGraphQLIntrospectionBtn) {
+  testGraphQLIntrospectionBtn.addEventListener('click', testGraphQLIntrospection);
+}
+
+if (checkPrototypePollutionBtn) {
+  checkPrototypePollutionBtn.addEventListener('click', checkPrototypePollution);
+}
+
+if (validateStolenTokenBtn) {
+  validateStolenTokenBtn.addEventListener('click', validateStolenToken);
+}
+
+// Check the progress of the Modern Web App Attack Chain
+async function checkModernChainProgress() {
+  try {
+    const response = await fetch(`${API_URL}/check-exploit-progress?chain=modern-web-app`, {
+      headers: {
+        'Authorization': localStorage.getItem('token')
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      updateModernChainUI(data.stages);
+      
+      // Show the tools section for admin or when specific stages are completed
+      if (currentUser && (currentUser.role === 'admin' || data.stages.includes('discovered_vulnerable_dependency'))) {
+        modernChainTools.style.display = 'block';
+      }
+      
+      // Update hint based on progress
+      if (data.stages.length > 0) {
+        const latestStage = data.stages[data.stages.length - 1];
+        updateModernChainHint(latestStage);
+      }
+    } else {
+      showNotification('Error checking progress', 'danger');
+    }
+  } catch (error) {
+    console.error('Error checking Modern Web App Attack Chain progress:', error);
+    showNotification('Failed to check progress. Try again later.', 'danger');
+  }
+}
+
+// Update the UI based on the completed stages
+function updateModernChainUI(completedStages) {
+  // Reset all badges
+  const badges = [
+    stageDiscoveredDependency,
+    stageClientPollution,
+    stageGraphQLAccess,
+    stageBatchQuery,
+    stageTokenExtraction,
+    stageMassCompromise
+  ];
+  
+  badges.forEach(badge => {
+    badge.className = 'badge bg-secondary';
+    badge.textContent = 'Incomplete';
+  });
+  
+  // Update completed stages
+  let completedCount = 0;
+  
+  if (completedStages.includes('discovered_vulnerable_dependency')) {
+    stageDiscoveredDependency.className = 'badge bg-success';
+    stageDiscoveredDependency.textContent = 'Complete';
+    completedCount++;
+  }
+  
+  if (completedStages.includes('client_side_pollution_success')) {
+    stageClientPollution.className = 'badge bg-success';
+    stageClientPollution.textContent = 'Complete';
+    completedCount++;
+  }
+  
+  if (completedStages.includes('graphql_access')) {
+    stageGraphQLAccess.className = 'badge bg-success';
+    stageGraphQLAccess.textContent = 'Complete';
+    completedCount++;
+  }
+  
+  if (completedStages.includes('graphql_batch_attack')) {
+    stageBatchQuery.className = 'badge bg-success';
+    stageBatchQuery.textContent = 'Complete';
+    completedCount++;
+  }
+  
+  if (completedStages.includes('token_extraction_success')) {
+    stageTokenExtraction.className = 'badge bg-success';
+    stageTokenExtraction.textContent = 'Complete';
+    completedCount++;
+  }
+  
+  if (completedStages.includes('mass_compromise_success')) {
+    stageMassCompromise.className = 'badge bg-success';
+    stageMassCompromise.textContent = 'Complete';
+    completedCount++;
+  }
+  
+  // Update progress bar
+  const progressPercent = Math.round((completedCount / badges.length) * 100);
+  modernChainProgress.style.width = `${progressPercent}%`;
+  modernChainProgress.textContent = `${progressPercent}%`;
+  modernChainProgress.setAttribute('aria-valuenow', progressPercent);
+  
+  // Change progress bar color based on completion
+  if (progressPercent === 100) {
+    modernChainProgress.className = 'progress-bar bg-success';
+    showNotification('Congratulations! You\'ve completed the Modern Web App Attack Chain!', 'success', 10000);
+  } else if (progressPercent >= 50) {
+    modernChainProgress.className = 'progress-bar bg-warning';
+  }
+}
+
+// Update the hint based on the latest completed stage
+function updateModernChainHint(latestStage) {
+  let hint = '';
+  
+  switch (latestStage) {
+    case 'discovered_vulnerable_dependency':
+      hint = 'Good job! Now try exploiting prototype pollution through the /api/user-settings endpoint.';
+      break;
+    case 'client_side_pollution_success':
+      hint = 'Prototype pollution successful! Check if you can access GraphQL with /api/check-graphql-access.';
+      break;
+    case 'graphql_access':
+      hint = 'You\'ve gained GraphQL access! Try querying all users with the users query.';
+      break;
+    case 'graphql_direct_user_query':
+    case 'graphql_pollution_access_success':
+    case 'graphql_mass_data_query':
+      hint = 'Good progress! Try using batch queries to bypass rate limiting.';
+      break;
+    case 'graphql_batch_attack':
+      hint = 'Batch query successful! Look for session tokens in the user data.';
+      break;
+    case 'token_extraction_success':
+      hint = 'Token stolen! Use multiple tokens to access different accounts and complete the mass compromise.';
+      break;
+    case 'mass_compromise_success':
+      hint = 'Congratulations! You\'ve completed the entire Modern Web App Attack Chain!';
+      break;
+    default:
+      hint = 'Start by examining the JavaScript dependencies in package.json and look for GraphQL endpoints.';
+  }
+  
+  modernChainHint.textContent = hint;
+}
+
+// Test GraphQL introspection
+async function testGraphQLIntrospection() {
+  try {
+    const introspectionQuery = {
+      query: `
+        {
+          __schema {
+            types {
+              name
+              fields {
+                name
+                type {
+                  name
+                  kind
+                }
+              }
+            }
+          }
+        }
+      `
+    };
+    
+    const response = await fetch(`${API_URL}/graphql`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': localStorage.getItem('token')
+      },
+      body: JSON.stringify(introspectionQuery)
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      showNotification('GraphQL introspection successful!', 'success');
+      console.log('Schema information:', data);
+      
+      // Show a modal with the schema information for educational purposes
+      const schemaTypes = data.data.__schema.types.filter(type => !type.name.startsWith('__'));
+      const schemaInfo = `
+        <h5>GraphQL Schema Discovery</h5>
+        <p>You've successfully performed GraphQL introspection and discovered ${schemaTypes.length} types:</p>
+        <ul>
+          ${schemaTypes.map(type => `<li>${type.name} ${type.fields ? `(${type.fields.length} fields)` : ''}</li>`).join('')}
+        </ul>
+        <p>This information can be used to craft more targeted queries.</p>
+      `;
+      
+      // Use Bootstrap modal or similar to display this information
+      document.getElementById('search-results').innerHTML = schemaInfo;
+      searchModal.show();
+    } else {
+      showNotification('GraphQL introspection failed. Try prototype pollution first.', 'warning');
+    }
+  } catch (error) {
+    console.error('Error testing GraphQL introspection:', error);
+    showNotification('Error during GraphQL introspection', 'danger');
+  }
+}
+
+// Check prototype pollution status
+async function checkPrototypePollution() {
+  try {
+    // First attempt to pollute the prototype
+    const pollutionPayload = {
+      "__proto__": {
+        "isAdmin": true,
+        "canAccessGraphQL": true
+      }
+    };
+    
+    // Send the pollution attempt
+    await fetch(`${API_URL}/user-settings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': localStorage.getItem('token')
+      },
+      body: JSON.stringify(pollutionPayload)
+    });
+    
+    // Check if pollution was successful
+    const response = await fetch(`${API_URL}/check-graphql-access`, {
+      headers: {
+        'Authorization': localStorage.getItem('token')
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showNotification('Prototype pollution successful! You can now access GraphQL.', 'success');
+    } else {
+      showNotification('Prototype pollution not detected. Try again with the correct payload.', 'warning');
+    }
+  } catch (error) {
+    console.error('Error checking prototype pollution:', error);
+    showNotification('Error checking prototype pollution status', 'danger');
+  }
+}
+
+// Validate a stolen token
+async function validateStolenToken() {
+  const token = stolenTokenInput.value.trim();
+  
+  if (!token) {
+    showNotification('Please enter a token to validate', 'warning');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_URL}/validate-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': localStorage.getItem('token')
+      },
+      body: JSON.stringify({ token })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      if (data.userCompromised) {
+        showNotification(`Token validated! You've compromised user: ${data.userCompromised}`, 'success');
+      } else {
+        showNotification(`Token validated for user: ${data.username}`, 'info');
+      }
+    } else {
+      showNotification('Invalid token', 'danger');
+    }
+  } catch (error) {
+    console.error('Error validating token:', error);
+    showNotification('Error validating token', 'danger');
+  }
 } 

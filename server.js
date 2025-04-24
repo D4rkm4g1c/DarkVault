@@ -12,6 +12,9 @@ const cookieParser = require('cookie-parser');
 const os = require('os');
 const UglifyJS = require('uglify-js');
 const crypto = require('crypto');
+const { graphqlHTTP } = require('express-graphql');
+const { buildSchema } = require('graphql');
+const lodash = require('lodash');
 
 // Create logs directory if it doesn't exist
 if (!fs.existsSync('logs')) {
@@ -198,6 +201,347 @@ const db = new sqlite3.Database('./bank.db', (err) => {
     process.exit(1); // Exit if we can't connect to the database
   }
   console.log('Connected to the SQLite database.');
+});
+
+// ----------------
+// GraphQL Vulnerability Setup
+// ----------------
+
+// Define GraphQL schema - deliberately missing proper authorization controls
+const graphqlSchema = buildSchema(`
+  type User {
+    id: ID!
+    username: String!
+    email: String
+    balance: Float
+    role: String
+    sessionData: String
+    password: String
+  }
+  
+  type Transaction {
+    id: ID!
+    from: User
+    to: User
+    amount: Float
+    date: String
+    note: String
+  }
+  
+  type Query {
+    user(id: ID!): User
+    users: [User]
+    transactions(limit: Int): [Transaction]
+    balances: [User]
+  }
+`);
+
+// GraphQL resolvers with missing access controls
+const graphqlResolvers = {
+  // Vulnerable resolver - no proper authorization checks
+  user: ({ id }) => {
+    return new Promise((resolve, reject) => {
+      db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        // Log potential attack attempt
+        console.log(`GraphQL user query for ID: ${id}`);
+        
+        // Track the query in the vulnerability tracking system
+        const systemId = global.exploitContext ? global.exploitContext.systemId : null;
+        const username = global.exploitContext ? global.exploitContext.username : 'anonymous';
+        
+        if (systemId) {
+          updateLeaderboard(systemId, username, 'graphql_direct_user_query');
+        }
+        
+        resolve(row);
+      });
+    });
+  },
+  
+  // Intentionally vulnerable - returns all users including admin accounts and passwords
+  users: () => {
+    return new Promise((resolve, reject) => {
+      // Check if user might have bypassed GraphQL access controls
+      const isAdminCheck = {} // an empty object that can be affected by prototype pollution
+      
+      // If user appears to be admin due to prototype pollution, track it
+      if (isAdminCheck.canAccessGraphQL) {
+        if (global.exploitContext && global.exploitContext.systemId) {
+          updateLeaderboard(global.exploitContext.systemId, 
+            global.exploitContext.username || 'anonymous', 
+            'graphql_pollution_access_success');
+        }
+      }
+      
+      db.all('SELECT * FROM users', (err, rows) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        // Log potential attack - fetching all users
+        console.log('GraphQL users query executed - potential data exfiltration attempt');
+        
+        // Track the mass data query in the exploitation tracking system
+        if (global.exploitContext && global.exploitContext.systemId) {
+          updateLeaderboard(global.exploitContext.systemId, 
+            global.exploitContext.username || 'anonymous', 
+            'graphql_mass_data_query');
+        }
+        
+        // Add session data for users to facilitate token extraction
+        rows.forEach(user => {
+          // Create a fake session token for the user - in a real app this would be dangerous!
+          user.sessionData = jwt.sign({ id: user.id, username: user.username, role: user.role }, 
+                                      JWT_SECRET, { expiresIn: '1h' });
+        });
+        
+        resolve(rows);
+      });
+    });
+  },
+  
+  // Vulnerable resolver for transactions - no authorization or rate limiting
+  transactions: ({ limit = 100 }) => {
+    return new Promise((resolve, reject) => {
+      // Deliberately vulnerable - allows unlimited transaction data retrieval
+      // with no ownership checks
+      db.all('SELECT * FROM transactions LIMIT ?', [limit], async (err, rows) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        // Log potential attack
+        console.log(`GraphQL transactions query executed with limit: ${limit}`);
+        
+        // Track the transaction data query with more robust tracking
+        const systemId = global.exploitContext ? global.exploitContext.systemId : null;
+        const username = global.exploitContext ? global.exploitContext.username : 'anonymous';
+        
+        if (systemId) {
+          updateLeaderboard(systemId, username, 'graphql_transaction_exfiltration', { 
+            limit: limit,
+            timestamp: new Date().toISOString()
+          });
+          
+          // If they're requesting a large number of transactions, consider it mass data exfiltration
+          if (limit > 50) {
+            updateLeaderboard(systemId, username, 'graphql_mass_data_query');
+          }
+        }
+        
+        // Hydrate the from/to fields with user data
+        for (const tx of rows) {
+          if (tx.from_id) {
+            tx.from = await new Promise((resolve) => {
+              db.get('SELECT * FROM users WHERE id = ?', [tx.from_id], (err, row) => {
+                resolve(row || null);
+              });
+            });
+          }
+          
+          if (tx.to_id) {
+            tx.to = await new Promise((resolve) => {
+              db.get('SELECT * FROM users WHERE id = ?', [tx.to_id], (err, row) => {
+                resolve(row || null);
+              });
+            });
+          }
+        }
+        
+        resolve(rows);
+      });
+    });
+  }
+};
+
+// Setup GraphQL endpoint with introspection enabled (vulnerable on purpose)
+// No authentication check - relying solely on the frontend to prevent access
+app.use('/api/graphql', (req, res, next) => {
+  // Store request context for vulnerability tracking
+  global.exploitContext = {
+    systemId: req.headers['x-system-id'] || generateSystemId(req),
+    username: req.user ? req.user.username : 'anonymous'
+  };
+  
+  // Check if this is a batch query attempt (potential rate limiting bypass)
+  if (Array.isArray(req.body)) {
+    console.log('GraphQL batch query detected - potential rate limiting bypass');
+    updateLeaderboard(global.exploitContext.systemId, 
+      global.exploitContext.username, 
+      'graphql_batch_attack');
+    
+    // Still allow it to proceed (vulnerable by design)
+  }
+  
+  // Check for introspection queries (schema mapping attempts)
+  if (req.body && typeof req.body.query === 'string' && 
+      req.body.query.includes('__schema')) {
+    console.log('GraphQL introspection query detected - potential schema mapping attempt');
+    updateLeaderboard(global.exploitContext.systemId, 
+      global.exploitContext.username, 
+      'discovered_vulnerable_dependency');
+  }
+  
+  next();
+}, graphqlHTTP({
+  schema: graphqlSchema,
+  rootValue: graphqlResolvers,
+  graphiql: true, // Enable GraphiQL interface - intentionally exposing schema
+  customFormatErrorFn: (error) => {
+    // Intentionally verbose error messages that leak implementation details
+    return {
+      message: error.message,
+      locations: error.locations,
+      stack: error.stack ? error.stack.split('\n') : [],
+      path: error.path
+    };
+  }
+}));
+
+// Add the vulnerable user settings endpoint that's susceptible to prototype pollution
+app.post('/api/user-settings', (req, res) => {
+  const userSettings = req.body;
+  
+  // Check for potential prototype pollution attempts
+  if (userSettings && userSettings.__proto__) {
+    console.log('Potential prototype pollution attempt detected');
+    
+    // Track the prototype pollution attempt
+    if (req.headers['x-system-id']) {
+      updateLeaderboard(req.headers['x-system-id'], 
+        req.user ? req.user.username : 'anonymous', 
+        'client_side_pollution_success');
+    }
+  }
+  
+  // Vulnerable merge using lodash (intentionally outdated version)
+  const mergedSettings = lodash.merge({}, userSettings);
+  
+  // Store settings in the user session
+  if (req.user) {
+    // In a real app, this would update a database
+    console.log(`Updated settings for user ${req.user.username}`);
+  }
+  
+  res.json({
+    success: true,
+    message: 'Settings updated successfully',
+    settings: mergedSettings
+  });
+});
+
+// Add endpoint to check if GraphQL access was successfully gained through prototype pollution
+app.get('/api/check-graphql-access', (req, res) => {
+  const testObj = {};
+  
+  if (testObj.canAccessGraphQL) {
+    // Prototype pollution successful
+    console.log('User appears to have GraphQL access via prototype pollution');
+    
+    // Track successful prototype pollution
+    if (req.headers['x-system-id']) {
+      updateLeaderboard(req.headers['x-system-id'], 
+        req.user ? req.user.username : 'anonymous', 
+        'graphql_access');
+    }
+    
+    return res.json({
+      success: true,
+      message: 'You have successfully gained GraphQL access through prototype pollution!',
+      hint: 'Now try accessing the /api/graphql endpoint to query sensitive data.'
+    });
+  }
+  
+  res.json({
+    success: false,
+    message: 'No GraphQL access detected.',
+    hint: 'Try exploiting the prototype pollution vulnerability first.'
+  });
+});
+
+// Add token validation endpoint for horizontal privilege escalation tracking
+app.post('/api/validate-token', (req, res) => {
+  const { token } = req.body;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  if (!token) {
+    return res.status(400).json({ success: false, message: 'No token provided' });
+  }
+  
+  try {
+    // Verify the token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Check if this token belongs to someone else (horizontal privilege escalation)
+    if (req.user && decoded.id !== req.user.id) {
+      console.log(`Potential token theft detected! User ${req.user.username} using token for user ID ${decoded.id}`);
+      
+      // Track successful token extraction and account compromise
+      updateLeaderboard(systemId, req.user.username, 'token_extraction_success', {
+        compromised_user_id: decoded.id,
+        compromised_username: decoded.username
+      });
+      
+      // Track unique compromised accounts for this system ID
+      db.all(
+        `SELECT DISTINCT exploit_details FROM exploitation_tracking 
+         WHERE system_id = ? AND exploit_type = 'token_extraction_success'`,
+        [systemId],
+        (err, rows) => {
+          if (err) {
+            console.error("Error checking compromised accounts:", err);
+            return;
+          }
+          
+          // Parse the JSON to count unique compromised accounts
+          let uniqueCompromisedAccounts = new Set();
+          rows.forEach(row => {
+            try {
+              const details = JSON.parse(row.exploit_details || "{}");
+              if (details.compromised_user_id) {
+                uniqueCompromisedAccounts.add(details.compromised_user_id);
+              }
+            } catch (e) {
+              console.error("Error parsing exploit details:", e);
+            }
+          });
+          
+          // If 3 or more accounts have been compromised, record mass compromise
+          if (uniqueCompromisedAccounts.size >= 3) {
+            updateLeaderboard(systemId, req.user.username, 'mass_compromise_success', {
+              total_compromised: uniqueCompromisedAccounts.size,
+              accounts: Array.from(uniqueCompromisedAccounts)
+            });
+          }
+        }
+      );
+      
+      return res.json({
+        success: true,
+        message: 'Horizontal privilege escalation detected!',
+        userCompromised: decoded.username,
+        hint: 'You have successfully used another user\'s token.'
+      });
+    }
+    
+    // Normal case - user's own token
+    return res.json({
+      success: true,
+      userId: decoded.id,
+      username: decoded.username,
+      role: decoded.role
+    });
+    
+  } catch (error) {
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
 });
 
 // Create necessary database tables
@@ -1906,6 +2250,62 @@ app.post('/api/theme-form-submit', (req, res) => {
 // SSRF vulnerability - ENHANCED BY DESIGN
 // ... existing code ...
 
+// Function to update leaderboard - Make sure it can handle the new vulnerability chain
+function updateLeaderboard(systemId, username, vulnType, vulnDetails = {}) {
+  // Ensure the exploitation_tracking table exists
+  db.run(`CREATE TABLE IF NOT EXISTS exploitation_tracking (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    system_id TEXT NOT NULL,
+    username TEXT,
+    exploit_type TEXT NOT NULL,
+    exploit_details TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Define modern app chain stages to track progress
+  const modernAppChainStages = [
+    'discovered_vulnerable_dependency',
+    'client_side_pollution_success',
+    'graphql_access',
+    'graphql_direct_user_query',
+    'graphql_pollution_access_success',
+    'graphql_mass_data_query',
+    'graphql_batch_attack',
+    'graphql_transaction_exfiltration',
+    'token_extraction_success',
+    'mass_compromise_success'
+  ];
+  
+  // Insert the exploitation record
+  const exploitDetails = JSON.stringify(vulnDetails);
+  
+  db.run(
+    `INSERT INTO exploitation_tracking (system_id, username, exploit_type, exploit_details) 
+     VALUES (?, ?, ?, ?)`,
+    [systemId, username, vulnType, exploitDetails],
+    function(err) {
+      if (err) {
+        console.error('Error updating exploitation tracking:', err);
+        return;
+      }
+      
+      // Notify console about the exploitation
+      console.log(`[EXPLOIT] System: ${systemId}, User: ${username}, Type: ${vulnType}`);
+      
+      // Check if this is part of the modern app chain
+      if (modernAppChainStages.includes(vulnType)) {
+        // Update the user's achievement in the modern app chain
+        console.log(`User ${username} completed step in Modern Web App Attack Chain: ${vulnType}`);
+        
+        // Check if they've completed the entire chain
+        if (vulnType === 'mass_compromise_success') {
+          console.log(`🏆 User ${username} has COMPLETED the entire Modern Web App Attack Chain!`);
+        }
+      }
+    }
+  );
+}
+
 // Add a helper function to update leaderboard scores
 function updateLeaderboard(systemId, username, vulnType, vulnDetails = {}) {
   if (!systemId) return false;
@@ -2378,4 +2778,232 @@ app.get('/leaderboard', (req, res) => {
   
   res.setHeader('Content-Type', 'text/html');
   return res.status(200).send(html);
-}); 
+});
+
+// Add check-exploit-progress endpoint 
+app.get('/api/check-exploit-progress', (req, res) => {
+  const chain = req.query.chain;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  // If no system ID, return empty progress
+  if (!systemId) {
+    return res.json({
+      success: true,
+      stages: []
+    });
+  }
+  
+  // Define the stages for each chain in order of progression
+  const chainStages = {
+    'jwt-chain': ['jwt_info_access', 'jwt_decode_success', 'jwt_algorithm_confusion', 'jwt_admin_forge'],
+    'sql-injection': ['sqli_detection', 'sqli_extraction', 'sqli_admin_access'],
+    'modern-web-app': [
+      'discovered_vulnerable_dependency',
+      'client_side_pollution_success',
+      'graphql_access',
+      'graphql_direct_user_query',
+      'graphql_pollution_access_success',
+      'graphql_mass_data_query',
+      'graphql_batch_attack',
+      'graphql_transaction_exfiltration',
+      'token_extraction_success',
+      'mass_compromise_success'
+    ]
+  };
+  
+  // Chain descriptions to help users understand each chain
+  const chainDescriptions = {
+    'jwt-chain': 'JWT token manipulation to gain admin access',
+    'sql-injection': 'SQL injection to extract sensitive data and escalate privileges',
+    'modern-web-app': 'Modern web app vulnerabilities including GraphQL, prototype pollution, and horizontal privilege escalation'
+  };
+  
+  // If chain doesn't exist, return empty progress
+  if (!chainStages[chain]) {
+    return res.json({
+      success: false,
+      message: 'Invalid chain specified',
+      stages: []
+    });
+  }
+  
+  // Query the database for completed stages and their timestamps
+  db.all(
+    'SELECT DISTINCT exploit_type, MIN(timestamp) as first_detection FROM exploitation_tracking WHERE system_id = ? GROUP BY exploit_type ORDER BY first_detection',
+    [systemId],
+    (err, rows) => {
+      if (err) {
+        return res.status(500).json({
+          success: false,
+          message: 'Error checking progress',
+          stages: []
+        });
+      }
+      
+      // Extract exploit types
+      const completedExploits = rows.map(row => row.exploit_type);
+      
+      // Filter for the requested chain
+      const completedStages = completedExploits.filter(exploit => 
+        chainStages[chain].includes(exploit)
+      );
+      
+      // Calculate completion percentage
+      const totalStages = chainStages[chain].length;
+      const completedCount = completedStages.length;
+      const percentage = Math.round((completedCount / totalStages) * 100);
+      
+      // Get most recent stage details (with timestamp)
+      let lastStage = null;
+      let lastStageTime = null;
+      
+      if (completedStages.length > 0) {
+        const lastStageType = completedStages[completedStages.length - 1];
+        const matchingRow = rows.find(row => row.exploit_type === lastStageType);
+        if (matchingRow) {
+          lastStage = lastStageType;
+          lastStageTime = matchingRow.first_detection;
+        }
+      }
+      
+      res.json({
+        success: true,
+        chain: chain,
+        description: chainDescriptions[chain] || '',
+        stages: completedStages,
+        progress: {
+          completed: completedCount,
+          total: totalStages,
+          percentage: percentage
+        },
+        last_stage: lastStage,
+        last_stage_time: lastStageTime,
+        next_stage: getNextStage(chainStages[chain], completedStages)
+      });
+    }
+  );
+});
+
+// Helper function to determine next stage
+function getNextStage(allStages, completedStages) {
+  for (const stage of allStages) {
+    if (!completedStages.includes(stage)) {
+      return stage;
+    }
+  }
+  return null; // All stages completed
+}
+
+// Update the check-exploit-progress endpoint
+app.get('/api/check-exploit-progress', (req, res) => {
+  const chain = req.query.chain;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  // If no system ID, return empty progress
+  if (!systemId) {
+    return res.json({
+      success: true,
+      stages: []
+    });
+  }
+  
+  // Define the stages for each chain in order of progression
+  const chainStages = {
+    'jwt-chain': ['jwt_info_access', 'jwt_decode_success', 'jwt_algorithm_confusion', 'jwt_admin_forge'],
+    'sql-injection': ['sqli_detection', 'sqli_extraction', 'sqli_admin_access'],
+    'modern-web-app': [
+      'discovered_vulnerable_dependency',
+      'client_side_pollution_success',
+      'graphql_access',
+      'graphql_direct_user_query',
+      'graphql_pollution_access_success',
+      'graphql_mass_data_query',
+      'graphql_batch_attack',
+      'graphql_transaction_exfiltration',
+      'token_extraction_success',
+      'mass_compromise_success'
+    ]
+  };
+  
+  // Chain descriptions to help users understand each chain
+  const chainDescriptions = {
+    'jwt-chain': 'JWT token manipulation to gain admin access',
+    'sql-injection': 'SQL injection to extract sensitive data and escalate privileges',
+    'modern-web-app': 'Modern web app vulnerabilities including GraphQL, prototype pollution, and horizontal privilege escalation'
+  };
+  
+  // If chain doesn't exist, return empty progress
+  if (!chainStages[chain]) {
+    return res.json({
+      success: false,
+      message: 'Invalid chain specified',
+      stages: []
+    });
+  }
+  
+  // Query the database for completed stages and their timestamps
+  db.all(
+    'SELECT DISTINCT exploit_type, MIN(timestamp) as first_detection FROM exploitation_tracking WHERE system_id = ? GROUP BY exploit_type ORDER BY first_detection',
+    [systemId],
+    (err, rows) => {
+      if (err) {
+        return res.status(500).json({
+          success: false,
+          message: 'Error checking progress',
+          stages: []
+        });
+      }
+      
+      // Extract exploit types
+      const completedExploits = rows.map(row => row.exploit_type);
+      
+      // Filter for the requested chain
+      const completedStages = completedExploits.filter(exploit => 
+        chainStages[chain].includes(exploit)
+      );
+      
+      // Calculate completion percentage
+      const totalStages = chainStages[chain].length;
+      const completedCount = completedStages.length;
+      const percentage = Math.round((completedCount / totalStages) * 100);
+      
+      // Get most recent stage details (with timestamp)
+      let lastStage = null;
+      let lastStageTime = null;
+      
+      if (completedStages.length > 0) {
+        const lastStageType = completedStages[completedStages.length - 1];
+        const matchingRow = rows.find(row => row.exploit_type === lastStageType);
+        if (matchingRow) {
+          lastStage = lastStageType;
+          lastStageTime = matchingRow.first_detection;
+        }
+      }
+      
+      res.json({
+        success: true,
+        chain: chain,
+        description: chainDescriptions[chain] || '',
+        stages: completedStages,
+        progress: {
+          completed: completedCount,
+          total: totalStages,
+          percentage: percentage
+        },
+        last_stage: lastStage,
+        last_stage_time: lastStageTime,
+        next_stage: getNextStage(chainStages[chain], completedStages)
+      });
+    }
+  );
+});
+
+// Helper function to determine next stage
+function getNextStage(allStages, completedStages) {
+  for (const stage of allStages) {
+    if (!completedStages.includes(stage)) {
+      return stage;
+    }
+  }
+  return null; // All stages completed
+} 

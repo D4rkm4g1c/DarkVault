@@ -498,6 +498,82 @@
           </div>
         </div>
       </div>
+
+      <!-- Add this after existing vulnerability chain cards, likely in the admin or exploit section -->
+      <div class="card mb-4 exploit-chain" id="modern-web-attack-chain-card">
+        <div class="card-header bg-dark text-white">
+          <h5>Modern Web App Attack Chain</h5>
+        </div>
+        <div class="card-body">
+          <div class="alert alert-info">
+            This challenge involves exploiting modern web app vulnerabilities to compromise multiple accounts.
+          </div>
+          
+          <h6 class="font-weight-bold">Progress Tracking:</h6>
+          <div class="progress mb-3">
+            <div id="modern-chain-progress" class="progress-bar bg-danger" role="progressbar" style="width: 0%;" 
+                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+          </div>
+          
+          <ul class="list-group mb-3">
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              1. Find vulnerable JavaScript dependency
+              <span id="stage-discovered-dependency" class="badge bg-secondary">Incomplete</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              2. Exploit client-side prototype pollution
+              <span id="stage-client-pollution" class="badge bg-secondary">Incomplete</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              3. Access GraphQL API with elevated privileges
+              <span id="stage-graphql-access" class="badge bg-secondary">Incomplete</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              4. Use batch query to bypass rate limiting
+              <span id="stage-batch-query" class="badge bg-secondary">Incomplete</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              5. Extract authentication tokens from users
+              <span id="stage-token-extraction" class="badge bg-secondary">Incomplete</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              6. Compromise multiple accounts (mass data breach)
+              <span id="stage-mass-compromise" class="badge bg-secondary">Incomplete</span>
+            </li>
+          </ul>
+          
+          <div class="d-flex justify-content-between">
+            <button class="btn btn-sm btn-danger" id="check-modern-chain-progress">Check Progress</button>
+            <button class="btn btn-sm btn-outline-secondary" id="get-modern-chain-hint">Get Hint</button>
+          </div>
+          
+          <div id="modern-chain-hint" class="alert alert-secondary mt-3" style="display: none;">
+            Start by examining the JavaScript dependencies in package.json and look for GraphQL endpoints.
+          </div>
+          
+          <!-- Hidden tools for testing exploitation steps -->
+          <div id="modern-chain-tools" class="mt-3 p-3 border rounded" style="display: none;">
+            <h6>Test Tools</h6>
+            <div class="mb-2">
+              <button class="btn btn-sm btn-outline-dark" id="test-graphql-introspection">
+                Test GraphQL Introspection
+              </button>
+            </div>
+            <div class="mb-2">
+              <button class="btn btn-sm btn-outline-dark" id="check-prototype-pollution">
+                Check Prototype Pollution Status
+              </button>
+            </div>
+            <div class="mb-2">
+              <button class="btn btn-sm btn-outline-dark" id="validate-stolen-token">
+                Validate Stolen Token
+              </button>
+              <input type="text" id="stolen-token-input" class="form-control form-control-sm mt-1" 
+                     placeholder="Paste stolen JWT token here">
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Search Modal -->
