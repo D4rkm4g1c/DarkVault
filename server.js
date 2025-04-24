@@ -8,6 +8,8 @@ const multer = require('multer');
 const fs = require('fs');
 const { exec } = require('child_process');
 const axios = require('axios');
+const cookieParser = require('cookie-parser');
+const os = require('os');
 
 // Create logs directory if it doesn't exist
 if (!fs.existsSync('logs')) {
@@ -28,94 +30,65 @@ function logError(location, error, data = {}) {
 
 // Insecure JWT secret
 const JWT_SECRET = 'darkvault-super-secret-key';
+const WEAK_KEY = 'dev-key'; // Secondary weak key for testing
 
 // Create the app
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Vulnerable CORS configuration - allows any origin
+// Secure CORS configuration
 app.use(cors({
-  origin: '*',
+  origin: 'http://localhost:3000', // Restrict to known origins
   credentials: true
 }));
 
-// Bodyparser setup with high limit
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+// Bodyparser setup with reasonable limit
+app.use(bodyParser.json({ limit: '2mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '2mb' }));
+app.use(cookieParser());
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Vulnerable file upload configuration
+// Secure file upload configuration
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Modified: Now we check for a secret token that reveals a hidden upload path
-    // This secret must be found through another vulnerability first
-    const secretPath = req.headers['x-upload-path'] || '';
-    
-    // Create a secret directory for executable uploads that must be discovered
-    // Only files uploaded to this path will be executable
-    if (!fs.existsSync('uploads/executable')) {
-      fs.mkdirSync('uploads/executable', { recursive: true });
+    // Safe upload path
+    const uploadDir = 'uploads';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
-    
-    // Basic uploads go to regular directory, uploads with the secret token go to executable directory
-    if (secretPath === 'executable_7bc93a' && req.query.xMode === 'true') {
-      cb(null, 'uploads/executable/');
-      
-      // Store this progress in the user's exploit chain status
-      if (req.user) {
-        req.user.exploitStage = 'upload_success';
-        // Set a flag that can be checked by the command injection vulnerability
-        if (req.user.role === 'admin' || req.user.role === 'bot') {
-          req.user.exploitStage = 'command_ready';
-        }
-      }
-    } else {
-      cb(null, 'uploads/');
-    }
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    // Still vulnerable to path traversal, but prevents server crashes
-    // This is intentionally vulnerable for educational purposes
-    let originalname = file.originalname;
-    // Only trim null bytes at the end which can cause crashes
-    if (originalname.includes('\0')) {
-      console.log('Potentially malicious file with null byte detected:', originalname);
-    }
-    cb(null, originalname);
+    // Sanitize filename to prevent path traversal
+    const sanitizedName = path.basename(file.originalname).replace(/[^a-zA-Z0-9_.-]/g, '_');
+    cb(null, Date.now() + '-' + sanitizedName);
   }
 });
 
-// Note: restrictedExtensions is only enforced for the normal upload directory
-// This creates a multi-stage challenge - first discover the secret directory,
-// then you can upload any file type
-const restrictedExtensions = ['.php', '.js', '.exe', '.jsp', '.asp'];
+// Secure file filter
+const fileFilter = function(req, file, cb) {
+  // Check mime type and extension
+  const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf', 'text/plain'];
+  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.pdf', '.txt'];
+  
+  const ext = path.extname(file.originalname).toLowerCase();
+  
+  if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(null, false);
+  }
+};
 
 const upload = multer({ 
   storage: storage,
-  fileFilter: function(req, file, cb) {
-    // Modified: Basic file extension filtering for normal uploads
-    // But files can still be uploaded to the executable directory if the secret is known
-    const secretPath = req.headers['x-upload-path'] || '';
-    const ext = path.extname(file.originalname).toLowerCase();
-    
-    if (secretPath === 'executable_7bc93a' && req.query.xMode === 'true') {
-      // Allow any file if the secret path is used
-      return cb(null, true);
-    } else if (restrictedExtensions.includes(ext)) {
-      // Block dangerous extensions for normal uploads
-      return cb(null, false);
-    }
-    
-    return cb(null, true);
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB
   }
 });
-
-// Create uploads directory if it doesn't exist
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
 
 // Setup Database
 const db = new sqlite3.Database('./bank.db', (err) => {
@@ -126,37 +99,42 @@ const db = new sqlite3.Database('./bank.db', (err) => {
   console.log('Connected to the SQLite database.');
 });
 
-// Create tables with initial data
-db.serialize(() => {
-  // Users table
+// Create necessary database tables
+function setupDatabase() {
+  console.log('Setting up database...');
+  
+  // Create users table
   db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     username TEXT UNIQUE,
     password TEXT,
     email TEXT,
     role TEXT DEFAULT 'user',
-    balance REAL DEFAULT 1000.00
+    balance REAL DEFAULT 1000.0,
+    bio TEXT,
+    website TEXT,
+    location TEXT
   )`);
-
-  // Transactions table
+  
+  // Create transactions table
   db.run(`CREATE TABLE IF NOT EXISTS transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     sender_id INTEGER,
     receiver_id INTEGER,
     amount REAL,
     date TEXT,
     note TEXT
   )`);
-
-  // Admin messages table
+  
+  // Create admin messages table
   db.run(`CREATE TABLE IF NOT EXISTS admin_messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     user_id INTEGER,
     message TEXT,
     date TEXT
   )`);
   
-  // New table to track exploit chain progress
+  // Create exploit_chain table to track user progress
   db.run(`CREATE TABLE IF NOT EXISTS exploit_chain (
     user_id INTEGER PRIMARY KEY,
     stage TEXT DEFAULT 'not_started',
@@ -166,50 +144,112 @@ db.serialize(() => {
   
   // Create secrets table for chain requirements
   db.run(`CREATE TABLE IF NOT EXISTS secrets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     key_name TEXT UNIQUE,
     key_value TEXT
-  )`);
+  )`, function(err) {
+    if (err) {
+      console.error('Error creating secrets table:', err.message);
+    } else {
+      // Insert initial secrets
+      db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
+        if (!row) {
+          db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_key')");
+          db.run("INSERT INTO secrets (key_name, key_value) VALUES ('advanced_chain_key', 'chain_9a74c8')");
+          db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'access')");
+          db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_token')");
+        }
+      });
+    }
+  });
   
-  // Insert initial secrets
-  db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
-    if (!row) {
-      db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_9a74c8')");
-      db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'idor_access_9d731b')");
+  // Create themes table for cookie-based SQL injection
+  db.run(`CREATE TABLE IF NOT EXISTS themes (
+    id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE,
+    description TEXT,
+    custom_css TEXT
+  )`, function(err) {
+    if (err) {
+      console.error('Error creating themes table:', err.message);
+    } else {
+      // Insert some default themes
+      db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('default', 'Default theme', 'body { background-color: white; }')");
+      db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('dark', 'Dark theme', 'body { background-color: #222; color: #eee; }')");
+      db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('light', 'Light theme', 'body { background-color: #f8f9fa; }')");
+      console.log('Themes table created and populated');
     }
   });
+  
+  // Create user_settings table for prototype pollution
+  db.run(`CREATE TABLE IF NOT EXISTS user_settings (
+    user_id INTEGER PRIMARY KEY,
+    settings TEXT
+  )`, function(err) {
+    if (err) {
+      console.error('Error creating user_settings table:', err.message);
+    } else {
+      console.log('User settings table created');
+    }
+  });
+  
+  // Create profile_updates table for second-order SQL injection
+  db.run(`CREATE TABLE IF NOT EXISTS profile_updates (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER,
+    field TEXT,
+    old_value TEXT,
+    new_value TEXT,
+    date TEXT
+  )`, function(err) {
+    if (err) {
+      console.error('Error creating profile_updates table:', err.message);
+    } else {
+      console.log('Profile updates table created');
+    }
+  });
+  
+  // Insert admin user if not exists
+  db.get("SELECT * FROM users WHERE username = 'admin'", (err, user) => {
+    if (err) {
+      console.error('Error checking for admin user:', err.message);
+    } else if (!user) {
+      db.run("INSERT INTO users (username, password, email, role, balance) VALUES ('admin', 'admin123', 'admin@darkvault.com', 'admin', 9999.99)");
+      console.log('Admin user created');
+    }
+  });
+  
+  // Insert regular users if not exists
+  const users = [
+    { username: 'alice', password: 'password123', email: 'alice@example.com', role: 'user' },
+    { username: 'bob', password: 'password123', email: 'bob@example.com', role: 'user' }
+  ];
+  
+  users.forEach(user => {
+    db.get(`SELECT * FROM users WHERE username = '${user.username}'`, (err, existingUser) => {
+      if (err) {
+        console.error(`Error checking for user ${user.username}:`, err.message);
+      } else if (!existingUser) {
+        db.run(`INSERT INTO users (username, password, email, role, balance) VALUES ('${user.username}', '${user.password}', '${user.email}', '${user.role}', 1000.0)`);
+        console.log(`User ${user.username} created`);
+      }
+    });
+  });
+  
+  // Add admin bots for automation
+  db.get("SELECT * FROM users WHERE username = 'admin_message_bot'", (err, user) => {
+    if (err) {
+      console.error('Error checking for bot user:', err.message);
+    } else if (!user) {
+      db.run("INSERT INTO users (username, password, email, role) VALUES ('admin_message_bot', 'botpassword1', 'message_bot@darkvault.com', 'bot')");
+      db.run("INSERT INTO users (username, password, email, role) VALUES ('admin_feedback_bot', 'botpassword2', 'feedback_bot@darkvault.com', 'bot')");
+      console.log('Bot users created');
+    }
+  });
+}
 
-  // Insert admin and test users if they don't exist
-  db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
-    if (!row) {
-      // Plaintext password storage
-      db.run(`INSERT INTO users (username, password, email, role, balance) VALUES ("admin", "admin123", "admin@darkvault.com", "admin", 100000.00)`);
-      db.run(`INSERT INTO users (username, password, email, role) VALUES ("alice", "password123", "alice@example.com", "user")`);
-      db.run(`INSERT INTO users (username, password, email, role) VALUES ("bob", "bobpassword", "bob@example.com", "user")`);
-      
-      // Add bot users with restricted permissions
-      db.run(`INSERT INTO users (username, password, email, role) VALUES ("admin_message_bot", "botpassword1", "message_bot@darkvault.com", "bot")`);
-      db.run(`INSERT INTO users (username, password, email, role) VALUES ("admin_feedback_bot", "botpassword2", "feedback_bot@darkvault.com", "bot")`);
-      
-      console.log("Added default users and bot users");
-      
-      // Add some sample messages
-      const now = new Date().toISOString();
-      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (2, "Hello admin, I can't access my account. Please help!", "${now}")`);
-      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (3, "<script>alert('XSS in admin message')</script>", "${now}")`);
-      db.run(`INSERT INTO admin_messages (user_id, message, date) VALUES (2, "Is there a way to increase my transfer limit?", "${now}")`);
-      console.log("Added sample messages");
-      
-      // Add some sample transactions
-      const yesterday = new Date(Date.now() - 86400000).toISOString();
-      const twoDaysAgo = new Date(Date.now() - 172800000).toISOString();
-      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (2, 3, 150.00, "${yesterday}", "Dinner payment")`);
-      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (3, 2, 250.00, "${twoDaysAgo}", "Concert tickets")`);
-      db.run(`INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (1, 2, 1000.00, "${now}", "Welcome bonus! <script>alert('XSS in transaction')</script>")`);
-      console.log("Added sample transactions");
-    }
-  });
-});
+// Call setupDatabase at startup
+setupDatabase();
 
 // Middleware to log requests - information disclosure
 app.use((req, res, next) => {
@@ -219,78 +259,94 @@ app.use((req, res, next) => {
 
 // --- Vulnerable Endpoints ---
 
-// Insecure login - SQL Injection
+// Login endpoint - secure version but still allows JWT manipulation later
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ 
+      error: 'Missing credentials',
+      message: 'Username and password are required'
+    });
+  }
+
+  // Use parameterized query instead of string concatenation
+  const query = `SELECT * FROM users WHERE username = ? AND password = ?`;
   
-  // Modified: SQL injection now requires knowledge of a secret prefix
-  // Basic SQL injection like "admin" --" won't work anymore
-  // Added requirement for a specific x-chain-key header that can be found elsewhere in the app
-  const chainKey = req.headers['x-chain-key'] || '';
-  
-  // Log attempt for debugging
-  console.log(`Login attempt: ${username}, chain key: ${chainKey}`);
-  
-  // Vulnerable SQL query - now requires the chain key prefix
-  // Example exploit: username = "chain_9a74c8" OR username = "admin" --"
-  // The "chain_9a74c8" value must be discovered elsewhere in the application
-  const query = `SELECT * FROM users WHERE (username = "${username}" AND password = "${password}") OR (username = "${username}" AND "${chainKey}" = "chain_9a74c8")`;
-  
-  db.get(query, (err, user) => {
+  db.get(query, [username, password], async (err, user) => {
     if (err) {
       console.error('Login error:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: 'Database error' });
     }
     
-    if (user) {
-      // Create JWT token with excessive privileges data
-      const token = jwt.sign(
-        { id: user.id, username: user.username, role: user.role },
-        JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-      
-      // No cookie - only return the token in response
-      return res.status(200).json({
-        success: true,
-        message: 'Login successful',
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          role: user.role,
-          balance: user.balance
-        },
-        token
-      });
-    } else {
+    if (!user) {
       return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
+        error: 'Authentication failed',
+        message: 'Invalid username or password'
       });
     }
+
+    // Check if the account is locked
+    if (user.status === 'locked') {
+      return res.status(403).json({
+        error: 'Account locked',
+        message: 'Your account has been locked. Please contact an administrator.'
+      });
+    }
+
+    // Generate token - still vulnerable to JWT manipulation by design
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        username: user.username, 
+        role: user.role,
+        status: user.status
+      }, 
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    // Update user's last login
+    db.run('UPDATE users SET last_login = ? WHERE id = ?', [new Date().toISOString(), user.id]);
+    
+    // Log successful login attempts
+    console.log(`User login successful: ${user.username} (ID: ${user.id})`);
+    
+    // Return token and user info
+    return res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        status: user.status
+      }
+    });
   });
 });
 
-// Register endpoint with no validation
+// Register endpoint with proper validation
 app.post('/api/register', (req, res) => {
   const { username, password, email } = req.body;
   
-  // Log registration attempt
-  console.log(`Registration attempt: username=${username}, email=${email}`);
+  // Input validation
+  if (!username || !password || !email) {
+    return res.status(400).json({ 
+      error: 'Missing data',
+      message: 'Username, password and email are required' 
+    });
+  }
   
-  // Double quotes instead of single quotes to avoid SQL errors with apostrophes
-  // Still vulnerable to SQL injection but will work for most inputs
-  const query = `INSERT INTO users (username, password, email) VALUES ("${username}", "${password}", "${email}")`;
+  // Use parameterized query instead of string concatenation
+  const query = `INSERT INTO users (username, password, email) VALUES (?, ?, ?)`;
   
-  console.log('Executing SQL query:', query);
-  
-  db.run(query, function(err) {
+  db.run(query, [username, password, email], function(err) {
     if (err) {
-      // Log the detailed error
       console.error('Registration error:', err.message);
-      logError('Registration', err, { username, email, query });
-      return res.status(500).json({ error: err.message });
+      logError('Registration', err, { username, email });
+      return res.status(500).json({ error: 'Registration failed' });
     }
     
     console.log(`User registered successfully: username=${username}, userId=${this.lastID}`);
@@ -302,438 +358,428 @@ app.post('/api/register', (req, res) => {
   });
 });
 
-// Middleware for token verification - with bypass
+// Middleware for token verification - Keep the JWT vulnerability by design
 const verifyToken = (req, res, next) => {
   const token = req.headers['authorization'];
   
   if (!token) {
-    // Modified: Now requires both debug AND a special HTTP header
-    // This creates a prerequisite chain where you need information from somewhere else
-    if (req.query.debug === 'true' && req.headers['x-exploit-chain'] === 'stage1') {
-      db.get("SELECT id, username, role FROM users WHERE username = 'admin_message_bot'", (err, botUser) => {
-        if (err || !botUser) {
-          return res.status(401).json({ message: 'Debug mode failed to authenticate' });
-        }
-        
-        // Use the bot user for debug mode
-        req.user = { 
-          id: botUser.id, 
-          username: botUser.username, 
-          role: botUser.role,
-          botType: 'message_bot'
-        };
-        
-        // Load exploit chain progress for this bot user
-        loadExploitChainProgress(req, res, next);
-      });
-    } else {
-      return res.status(401).json({ message: 'No token provided' });
-    }
+    return res.status(401).json({ 
+      message: 'No token provided',
+      hint: 'Authentication required' 
+    });
   } else {
     try {
-      // Verify the token
-      const decoded = jwt.verify(token.replace('Bearer ', ''), JWT_SECRET);
+      // VULNERABLE BY DESIGN: JWT verification still accepts multiple secrets
+      // and doesn't properly validate role claims against the database
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (mainErr) {
+        // If main secret fails, try the weak testing key
+        try {
+          decoded = jwt.verify(token, WEAK_KEY);
+          console.log('WARNING: JWT verified with weak dev key!');
+        } catch (devErr) {
+          throw mainErr;
+        }
+      }
       
-      // Set user info from token
+      // Successfully verified the token
       req.user = decoded;
       
-      // Load exploit chain progress for this user
-      loadExploitChainProgress(req, res, next);
-      
-    } catch (err) {
-      return res.status(401).json({ message: 'Invalid token' });
+      // Load the user's real data from the database to compare with token claims
+      db.get(`SELECT * FROM users WHERE id = ?`, [decoded.id], (err, user) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        
+        // VULNERABLE BY DESIGN: Does not validate token role against database role
+        // This allows privilege escalation by manipulating the JWT payload
+        req.user.username = user.username;
+        req.user.email = user.email;
+        // req.user.role is not overwritten from DB, allowing token role to be used
+        req.user.balance = user.balance;
+        
+        // Add user's discovered secrets if any
+        loadExploitChainProgress(req, res, next);
+      });
+    } catch (error) {
+      console.error('Token verification error:', error.message);
+      return res.status(401).json({
+        message: 'Invalid token',
+        error: 'Authentication failed'
+      });
     }
   }
 };
 
-// Helper function to load exploit chain progress
+// Helper function to load and track exploit chain progress
 function loadExploitChainProgress(req, res, next) {
-  if (!req.user || !req.user.id) {
-    return next();
+  const userId = req.user.id;
+  
+  if (!userId) {
+    next();
+    return;
   }
   
-  // Get the exploit chain progress for this user
-  db.get(`SELECT * FROM exploit_chain WHERE user_id = ?`, [req.user.id], (err, chain) => {
+  // Check if user has exploit chain progress entry
+  db.get('SELECT * FROM exploit_chain WHERE user_id = ?', [userId], (err, row) => {
     if (err) {
-      console.error('Error loading exploit chain:', err);
+      console.error('Error checking exploit chain progress:', err.message);
+      next();
+      return;
     }
     
-    if (chain) {
-      // Set the exploit stage on the user object
-      req.user.exploitStage = chain.stage;
+    if (!row) {
+      // Create new entry if not exists
+      const now = new Date().toISOString();
+      db.run(
+        'INSERT INTO exploit_chain (user_id, stage, discovered_secrets, last_updated) VALUES (?, ?, ?, ?)',
+        [userId, 'not_started', '{}', now],
+        function(err) {
+          if (err) {
+            console.error('Error creating exploit chain record:', err.message);
+          }
+          
+          req.user.exploitStage = 'not_started';
+          req.user.discoveredSecrets = {};
+          
+          // Add a helper method for updating exploit stage
+          req.user.updateExploitStage = function(stage, secret = null) {
+            const now = new Date().toISOString();
+            
+            // Don't go backwards in the chain
+            const stages = ['not_started', 'found_chain_key', 'idor_success', 'upload_success', 'command_ready', 'command_success'];
+            const currentIndex = stages.indexOf(req.user.exploitStage);
+            const newIndex = stages.indexOf(stage);
+            
+            if (newIndex <= currentIndex && req.user.exploitStage !== 'not_started') {
+              console.log(`Not updating stage: ${req.user.exploitStage} -> ${stage} (would go backwards)`);
+              return;
+            }
+            
+            // Update in memory
+            req.user.exploitStage = stage;
+            
+            // Update discovered secrets if provided
+            if (secret) {
+              if (!req.user.discoveredSecrets) {
+                req.user.discoveredSecrets = {};
+              }
+              req.user.discoveredSecrets[secret.key] = secret.value;
+            }
+            
+            // Update in database
+            db.run(
+              'UPDATE exploit_chain SET stage = ?, discovered_secrets = ?, last_updated = ? WHERE user_id = ?',
+              [stage, JSON.stringify(req.user.discoveredSecrets || {}), now, userId],
+              function(err) {
+                if (err) {
+                  console.error('Error updating exploit chain stage:', err.message);
+                }
+              }
+            );
+          };
+          
+          next();
+        }
+      );
+    } else {
+      // Load existing entry
+      req.user.exploitStage = row.stage;
       
-      // Parse the discovered secrets if any
       try {
-        req.user.discoveredSecrets = JSON.parse(chain.discovered_secrets || '{}');
+        req.user.discoveredSecrets = JSON.parse(row.discovered_secrets);
       } catch (e) {
         req.user.discoveredSecrets = {};
+        console.error('Error parsing discovered secrets:', e);
       }
-    } else {
-      // Initialize with default values
-      req.user.exploitStage = 'not_started';
-      req.user.discoveredSecrets = {};
       
-      // Create a new record for this user - using INSERT OR REPLACE to prevent unique constraint errors
-      const now = new Date().toISOString();
-      db.run(
-        `INSERT OR REPLACE INTO exploit_chain (user_id, stage, discovered_secrets, last_updated) VALUES (?, ?, ?, ?)`,
-        [req.user.id, 'not_started', '{}', now],
-        (err) => {
-          if (err) {
-            console.error('Error creating exploit chain record:', err);
-          }
+      // Add a helper method for updating exploit stage
+      req.user.updateExploitStage = function(stage, secret = null) {
+        const now = new Date().toISOString();
+        
+        // Don't go backwards in the chain
+        const stages = ['not_started', 'found_chain_key', 'idor_success', 'upload_success', 'command_ready', 'command_success'];
+        const currentIndex = stages.indexOf(req.user.exploitStage);
+        const newIndex = stages.indexOf(stage);
+        
+        if (newIndex <= currentIndex && req.user.exploitStage !== 'not_started') {
+          console.log(`Not updating stage: ${req.user.exploitStage} -> ${stage} (would go backwards)`);
+          return;
         }
-      );
+        
+        // Update in memory
+        req.user.exploitStage = stage;
+        
+        // Update discovered secrets if provided
+        if (secret) {
+          if (!req.user.discoveredSecrets) {
+            req.user.discoveredSecrets = {};
+          }
+          req.user.discoveredSecrets[secret.key] = secret.value;
+        }
+        
+        // Update in database
+        db.run(
+          'UPDATE exploit_chain SET stage = ?, discovered_secrets = ?, last_updated = ? WHERE user_id = ?',
+          [stage, JSON.stringify(req.user.discoveredSecrets || {}), now, userId],
+          function(err) {
+            if (err) {
+              console.error('Error updating exploit chain stage:', err.message);
+            }
+          }
+        );
+      };
+      
+      next();
     }
-    
-    // Add a function to update the exploit chain progress
-    req.user.updateExploitStage = function(newStage, discoveredSecret = null) {
-      // Update the stage
-      req.user.exploitStage = newStage;
-      
-      // Add the discovered secret if provided
-      if (discoveredSecret) {
-        req.user.discoveredSecrets[discoveredSecret.key] = discoveredSecret.value;
-      }
-      
-      // Update in database
-      const now = new Date().toISOString();
-      db.run(
-        `UPDATE exploit_chain SET stage = ?, discovered_secrets = ?, last_updated = ? WHERE user_id = ?`,
-        [newStage, JSON.stringify(req.user.discoveredSecrets), now, req.user.id],
-        (err) => {
-          if (err) {
-            console.error('Error updating exploit chain:', err);
-          }
-        }
-      );
-    };
-    
-    return next();
   });
 }
 
-// Get user profile - Information disclosure
+// Get user profile - Fixed IDOR vulnerability
 app.get('/api/users/:id', verifyToken, (req, res) => {
   const id = req.params.id;
   
-  // Modified: Now implement a chain-based IDOR that requires specific knowledge
-  // Users can only access their own profile by default
-  // To access other profiles, they need to have completed other steps in the chain
-  const canAccessAnyProfile = 
-    // They've found the chain key through SQL injection
-    req.user.exploitStage === 'found_chain_key' ||
-    // Or they have the secret token
-    req.headers['x-profile-access'] === 'idor_access_9d731b' ||
-    // Or they're an admin
-    req.user.role === 'admin' ||
-    // Or they're accessing their own profile
-    req.user.id.toString() === id;
-  
-  if (!canAccessAnyProfile) {
-    // If they're not authorized but have added a special query param, reveal a hint
-    if (req.query.access === 'true') {
-      return res.status(403).json({ 
-        message: 'Access denied',
-        hint: 'You need to find the x-profile-access header value first. Try SQL injection on the search endpoint.'
-      });
-    }
-    return res.status(403).json({ message: 'Unauthorized' });
+  // Only allow users to access their own profile or admins to access any profile
+  if (req.user.id.toString() !== id && req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Unauthorized - You can only access your own profile' });
   }
   
-  // If we get here, the user is allowed to access the profile
-  // Still vulnerable to IDOR, but requires specific chain knowledge
-  db.get(`SELECT * FROM users WHERE id = ${id}`, (err, user) => {
+  // Use parameterized query instead of string concatenation
+  db.get(`SELECT * FROM users WHERE id = ?`, [id], (err, user) => {
     if (err) {
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: 'Database error' });
     }
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    // If this is a successful IDOR exploitation of another user's profile
-    // (accessing a profile that isn't your own), update the exploit stage
-    if (req.user.id.toString() !== id) {
-      // They've successfully exploited IDOR
-      if (req.user) {
-        req.user.updateExploitStage('idor_success', {
-          key: 'idor_success',
-          value: 'true'
-        });
-        
-        // If they've also completed the upload step, add the command stage hint
-        if (req.user.exploitStage === 'upload_success') {
-          req.user.updateExploitStage('command_ready');
-        }
-      }
-      
-      // Reveal the special token through IDOR
-      db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_exploit_7b491c3') ON CONFLICT(key_name) DO NOTHING");
-    }
-    
-    // Add bot secrets to the response if appropriate
-    if (user.role === 'bot' && (req.user.role === 'admin' || req.user.id === user.id)) {
+    // Add bot secrets to the response if appropriate (for admins only)
+    if (user.role === 'bot' && req.user.role === 'admin') {
       user.secretInfo = 'This bot is used for automated admin tasks. It has elevated privileges.';
-      if (user.username === 'admin_message_bot') {
-        user.secretKey = 'bot_key_8e4a1c';
-        user.botType = 'message_bot';
-      }
     }
     
     return res.status(200).json(user);
   });
 });
 
-// Transfer money - CSRF vulnerable, no origin check
+// Transfer money - Fix CSRF vulnerability in this endpoint (but keep it in update-email)
 app.post('/api/transfer', verifyToken, (req, res) => {
-  const { to, amount, note } = req.body;
+  const { to, amount, note, csrf_token } = req.body;
   const fromId = req.user.id;
   
-  // Vulnerable to XSS in the note field (will be displayed to receiver)
-  // Using double quotes for string literals to avoid issues with apostrophes
-  // XSS payload example: <img src=x onerror="alert('XSS in transfer')">
+  // Check CSRF token
+  if (!csrf_token || csrf_token !== req.user.id.toString()) {
+    return res.status(403).json({ error: 'Invalid CSRF token' });
+  }
   
-  const transferQuery = `
-    INSERT INTO transactions (sender_id, receiver_id, amount, date, note) 
-    VALUES (${fromId}, ${to}, ${amount}, "${new Date().toISOString()}", "${note}")
-  `;
+  // Validate inputs
+  if (!to || !amount || isNaN(parseFloat(amount))) {
+    return res.status(400).json({ error: 'Invalid transfer parameters' });
+  }
   
-  // Update balances
-  const updateSenderQuery = `UPDATE users SET balance = balance - ${amount} WHERE id = ${fromId}`;
-  const updateReceiverQuery = `UPDATE users SET balance = balance + ${amount} WHERE id = ${to}`;
+  // Sanitize note to prevent XSS
+  const sanitizedNote = note ? note.replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'Transfer';
   
-  db.run(transferQuery, function(err) {
-    if (err) {
-      console.error('Transfer error:', err.message);
-      return res.status(500).json({ error: err.message });
-    }
+  // Use parameterized queries for all database operations
+  db.serialize(() => {
+    // Begin transaction
+    db.run('BEGIN TRANSACTION');
     
-    db.run(updateSenderQuery, function(err) {
-      if (err) {
-        console.error('Update sender balance error:', err.message);
-        return res.status(500).json({ error: err.message });
-      }
-      
-      db.run(updateReceiverQuery, function(err) {
+    // Insert the transaction
+    db.run(
+      `INSERT INTO transactions (sender_id, receiver_id, amount, date, note) 
+      VALUES (?, ?, ?, ?, ?)`,
+      [fromId, to, parseFloat(amount), new Date().toISOString(), sanitizedNote],
+      function(err) {
         if (err) {
-          console.error('Update receiver balance error:', err.message);
-          return res.status(500).json({ error: err.message });
+          db.run('ROLLBACK');
+          console.error('Transfer error:', err.message);
+          return res.status(500).json({ error: 'Failed to record transaction' });
         }
         
-        return res.status(200).json({
-          success: true,
-          message: 'Transfer successful',
-          transactionId: this.lastID
-        });
-      });
-    });
+        const transactionId = this.lastID;
+        
+        // Update sender balance
+        db.run(
+          `UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?`,
+          [parseFloat(amount), fromId, parseFloat(amount)],
+          function(err) {
+            if (err || this.changes === 0) {
+              db.run('ROLLBACK');
+              console.error('Update sender balance error:', err ? err.message : 'Insufficient funds');
+              return res.status(400).json({ error: 'Insufficient funds or failed to update balance' });
+            }
+            
+            // Update receiver balance
+            db.run(
+              `UPDATE users SET balance = balance + ? WHERE id = ?`,
+              [parseFloat(amount), to],
+              function(err) {
+                if (err) {
+                  db.run('ROLLBACK');
+                  console.error('Update receiver balance error:', err.message);
+                  return res.status(500).json({ error: 'Failed to update receiver balance' });
+                }
+                
+                // Commit the transaction
+                db.run('COMMIT', function(err) {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    console.error('Commit error:', err.message);
+                    return res.status(500).json({ error: 'Failed to complete transaction' });
+                  }
+                  
+                  return res.status(200).json({
+                    success: true,
+                    message: 'Transfer successful',
+                    transactionId: transactionId
+                  });
+                });
+              }
+            );
+          }
+        );
+      }
+    );
   });
 });
 
-// Admin feature - Vulnerable to command injection
-app.post('/api/admin/run-report', verifyToken, (req, res) => {
-  // Only allow admin or bot users
-  if (req.user.role !== 'admin' && req.user.role !== 'bot') {
-    return res.status(403).json({ message: 'Unauthorized' });
-  }
-  
-  const { report_name } = req.body;
-  
-  // Modified: Command injection now requires a special token in the request
-  // that would need to be found through a previous exploit
-  // Also requires that the user has accessed a specific API endpoint first
-  const exploit_token = req.headers['x-exploit-token'] || '';
-  
-  // Create scripts directory if it doesn't exist
-  if (!fs.existsSync('scripts/reports')) {
-    fs.mkdirSync('scripts/reports', { recursive: true });
-  }
-  
-  // Check if the user has discovered the secret token elsewhere in the app
-  // This requires chaining exploits - first find the token, then use it here
-  if (exploit_token !== 'cmd_exploit_7b491c3' && !report_name.includes('cmd_exploit_7b491c3')) {
-    // If token is missing, create a file with just a console.log
-    fs.writeFileSync(`scripts/reports/${report_name}.js`, 'console.log("Report generated with no data");');
-    
-    // Run the harmless script instead - this prevents direct command injection
-    exec(`node scripts/reports/${report_name}.js`, (error, stdout, stderr) => {
-      if (error) {
-        return res.status(500).json({ error: error.message });
-      }
-      return res.status(200).json({ output: stdout });
+// Secure admin report endpoint - fixed command injection
+app.post('/api/admin/report', verifyToken, (req, res) => {
+  // Only allow admin users
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Unauthorized',
+      message: 'Only admins can run reports'
     });
-  } else {
-    // If correct token found, command injection is possible - but still needs certain prerequisites
-    // Check if the user has triggered the prerequisite step
-    const hasPrerequisite = req.user.exploitStage === 'command_ready' || 
-                          report_name.startsWith('safe_') || 
-                          req.headers['x-exploit-stage'] === 'command_ready';
-    
-    if (hasPrerequisite) {
-      // Vulnerable to command injection
-      exec(`node scripts/reports/${report_name}.js`, (error, stdout, stderr) => {
-        if (error) {
-          return res.status(500).json({ error: error.message });
-        }
-        
-        // Mark the exploit chain as complete when command injection succeeds
-        if (req.user) {
-          req.user.updateExploitStage('command_success', {
-            key: 'command_injection',
-            value: 'success'
-          });
-        }
-        
-        return res.status(200).json({ output: stdout });
-      });
-    } else {
-      return res.status(403).json({ 
-        message: 'Exploit chain incomplete', 
-        hint: 'You need to complete a prerequisite step first'
-      });
-    }
   }
-});
 
-// File upload endpoint - vulnerable to unrestricted file upload
-app.post('/api/upload', verifyToken, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: 'No file uploaded' });
-  }
+  // Get report parameters from request body
+  const { report_name, report_type } = req.body;
   
-  // Modified: Now provides different responses based on upload location
-  // This gives hints about the secret upload path when appropriate
-  const secretPath = req.headers['x-upload-path'] || '';
-  const isExecutableDir = secretPath === 'executable_7bc93a' && req.query.xMode === 'true';
-  
-  // Log the upload attempt
-  console.log(`File upload: ${req.file.originalname} to path: ${isExecutableDir ? 'executable' : 'regular'}`);
-  
-  // This reveals a hint about the command injection token if the file was uploaded to the executable directory
-  // Users must chain these vulnerabilities to progress
-  if (isExecutableDir) {
-    // Executable directory uploads can lead to command execution
-    // Store a value that unlocks the next step of the chain
-    if (req.user) {
-      req.user.updateExploitStage('upload_success', {
-        key: 'upload_success',
-        value: 'true'
-      });
-    }
-    
-    // Determine if this is a PHP file that might enable further exploitation
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    let nextHint = '';
-    
-    if (ext === '.php') {
-      // Provide a hint to the next stage of the attack chain
-      nextHint = 'File can execute commands. Command injection hint: cmd_exploit_7b491c3';
-    }
-    
-    return res.status(200).json({
-      success: true,
-      message: 'File uploaded to executable directory',
-      file_path: `/uploads/executable/${req.file.originalname}`,
-      hint: nextHint
-    });
-  } else {
-    // Regular upload directory can't execute code
-    return res.status(200).json({
-      success: true,
-      message: 'File uploaded successfully',
-      file_path: '/uploads/' + req.file.originalname
+  if (!report_name) {
+    return res.status(400).json({
+      error: 'Missing parameters',
+      message: 'Report name is required'
     });
   }
-});
 
-// Search for users - XSS vulnerable
-app.get('/api/search', verifyToken, (req, res) => {
-  // Validate the term exists
-  if (!req.query.term) {
-    return res.status(400).json({ message: 'Search term is required' });
-  }
-  
-  const term = req.query.term;
-  
-  // Modified: Added a secret table with the chain key
-  // User must first perform SQL injection on search to find this secret
-  // Then use it to exploit the login endpoint
-  db.run("CREATE TABLE IF NOT EXISTS secrets (id INTEGER PRIMARY KEY, key_name TEXT, key_value TEXT)", () => {
-    // Insert the secret key if it doesn't exist
-    db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
-      if (!row) {
-        db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_9a74c8')");
-      }
+  // Validate report name to prevent command injection
+  if (!/^[a-zA-Z0-9_-]+$/.test(report_name)) {
+    return res.status(400).json({
+      error: 'Invalid report name',
+      message: 'Report name can only contain alphanumeric characters, underscores, and hyphens'
     });
-  });
-  
-  // Modified: Still vulnerable to SQL injection, but now contains clues about the secret chain
-  // Example exploit: " UNION SELECT id, key_name, key_value FROM secrets --
-  console.log('Search term:', term);
+  }
+
+  // Generate a report safely without command injection
+  const reportContent = `Report: ${report_name}\nType: ${report_type || 'standard'}\nGenerated: ${new Date().toISOString()}`;
+  const reportFile = path.join(os.tmpdir(), `report_${Date.now()}.txt`);
   
   try {
-    // Vulnerable SQL query - extremely vulnerable to SQL injection
-    // This can be used to discover the chain_key needed for the login SQL injection
-    const query = `SELECT id, username, email FROM users WHERE username LIKE "%${term}%" OR email LIKE "%${term}%"`;
+    fs.writeFileSync(reportFile, reportContent);
     
-    db.all(query, (err, users) => {
-      if (err) {
-        console.error('Search error:', err.message);
-        return res.status(500).json({ error: err.message });
-      }
-      
-      // Check if this is a successful exploit attempt that found the secret
-      const foundSecret = query.toLowerCase().includes('secrets') && users.some(u => u.key_name === 'chain_key');
-      
-      // If they've successfully found the secret through SQL injection, provide a hint to the next step
-      if (foundSecret) {
-        console.log('User discovered secret through SQL injection');
-        // Update the chain status for this user
-        if (req.user) {
-          req.user.updateExploitStage('found_chain_key', {
-            key: 'chain_key',
-            value: 'chain_9a74c8'
-          });
-          
-          // Reveal the upload path secret as well if they've gotten this far
-          if (!users.some(u => u.key_value && u.key_value.includes('executable'))) {
-            // Add a hint about the upload path
-            db.run("INSERT INTO secrets (key_name, key_value) VALUES ('upload_path', 'executable_7bc93a')");
-          }
-        }
-      }
-      
-      return res.status(200).json({
-        success: true, 
-        users: users,
-        // Add a hint if they're close but didn't quite get it
-        hint: query.toLowerCase().includes('union') && !foundSecret ? 
-          "You're on the right track. Try looking for other tables besides 'users'." : ""
-      });
+    // Read the generated report
+    const data = fs.readFileSync(reportFile, 'utf8');
+    
+    return res.json({
+      success: true,
+      report: {
+        name: report_name,
+        type: report_type || 'standard',
+        content: data,
+        created: new Date().toISOString()
+      },
+      message: 'Report generated successfully'
     });
-  } catch (error) {
-    console.error('Search error:', error.message);
-    return res.status(500).json({ error: error.message });
+  } catch (err) {
+    return res.status(500).json({
+      error: 'Server error',
+      message: 'Failed to generate report'
+    });
   }
 });
 
-// Admin message endpoint - IDOR vulnerable
-app.post('/api/messages', verifyToken, (req, res) => {
-  const { user_id, message } = req.body;
+// Secure file upload endpoint
+app.post('/api/upload', verifyToken, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ 
+      error: 'No file uploaded or invalid file type',
+      message: 'Please upload a valid file (JPEG, PNG, PDF, or TXT)'
+    });
+  }
+
+  const uploadedFile = req.file;
   
-  // No validation if the authenticated user owns the message
-  // Using double quotes for string literals to avoid issues with apostrophes
-  // XSS payload example: <script>alert("Admin hacked!");</script>
+  return res.json({
+    success: true,
+    file: {
+      name: uploadedFile.originalname,
+      path: uploadedFile.path,
+      size: uploadedFile.size
+    },
+    message: 'File uploaded successfully'
+  });
+});
+
+// Search endpoint - secure version
+app.get('/api/search', (req, res) => {
+  const searchTerm = req.query.q;
+  
+  if (!searchTerm) {
+    return res.status(400).json({ 
+      error: 'Missing search term',
+      message: 'Search term is required'
+    });
+  }
+
+  // Use parameterized query
+  const query = `SELECT * FROM items WHERE name LIKE ? OR description LIKE ?`;
+  const param = `%${searchTerm}%`;
+  
+  db.all(query, [param, param], (err, items) => {
+    if (err) {
+      console.error('Search error:', err.message);
+      return res.status(500).json({ error: 'Search failed' });
+    }
+    
+    return res.json({ 
+      results: items,
+      count: items.length
+    });
+  });
+});
+
+// Admin message endpoint - Fix IDOR vulnerability
+app.post('/api/messages', verifyToken, (req, res) => {
+  const { message } = req.body;
+  const user_id = req.user.id; // Only allow sending messages for the authenticated user
+  
+  // Validate input
+  if (!message) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+  
+  // Sanitize message to prevent XSS
+  const sanitizedMessage = message.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  
+  // Use parameterized query
   const query = `
     INSERT INTO admin_messages (user_id, message, date) 
-    VALUES (${user_id}, "${message}", "${new Date().toISOString()}")
+    VALUES (?, ?, ?)
   `;
   
-  db.run(query, function(err) {
+  db.run(query, [user_id, sanitizedMessage, new Date().toISOString()], function(err) {
     if (err) {
       console.error('Message error:', err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: 'Failed to send message' });
     }
     
     return res.status(201).json({
@@ -744,27 +790,27 @@ app.post('/api/messages', verifyToken, (req, res) => {
   });
 });
 
-// Route to export all user data - Information disclosure
+// Route to export all user data - Fix information disclosure
 app.get('/api/admin/export-users', verifyToken, (req, res) => {
-  // Broken access control - no proper role check
-  if (req.query.isAdmin === 'true') {
-    db.all(`SELECT * FROM users`, (err, users) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-      
-      return res.status(200).json(users);
-    });
-  } else {
-    return res.status(403).json({ message: 'Unauthorized' });
+  // Proper role check
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Unauthorized - Admin access required' });
   }
+  
+  db.all(`SELECT id, username, email, role, balance FROM users`, (err, users) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to fetch users' });
+    }
+    
+    return res.status(200).json(users);
+  });
 });
 
-// Fetch admin messages - Added endpoint
+// Fetch admin messages - Fix access control
 app.get('/api/admin/messages', verifyToken, (req, res) => {
-  // Weak role check that can be bypassed
-  if (req.user.role !== 'admin' && req.query.isAdmin !== 'true') {
-    return res.status(403).json({ message: 'Unauthorized' });
+  // Proper role check
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Unauthorized - Admin access required' });
   }
   
   // Get all messages with user information
@@ -775,48 +821,35 @@ app.get('/api/admin/messages', verifyToken, (req, res) => {
     ORDER BY m.date DESC
   `, (err, messages) => {
     if (err) {
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: 'Failed to fetch messages' });
     }
     
     return res.status(200).json(messages);
   });
 });
 
-// Get transaction history - Missing endpoint
+// Get transaction history - Fix SQL injection
 app.get('/api/transactions', verifyToken, (req, res) => {
   const user_id = req.query.user_id;
   
-  if (!user_id) {
-    return res.status(400).json({ message: 'User ID is required' });
+  // Ensure user can only see their own transactions
+  if (!user_id || user_id !== req.user.id.toString()) {
+    return res.status(403).json({ error: 'Unauthorized - You can only view your own transactions' });
   }
   
-  // Vulnerable SQL - no check if the user_id matches the authenticated user
-  // Allows any authenticated user to see any other user's transactions
-  // Example exploit: 2 OR 1=1 -- returns all transactions
+  // Use parameterized query
   const query = `
     SELECT * FROM transactions 
-    WHERE sender_id = ${user_id} OR receiver_id = ${user_id}
+    WHERE sender_id = ? OR receiver_id = ?
     ORDER BY date DESC
   `;
   
-  db.all(query, (err, transactions) => {
+  db.all(query, [user_id, user_id], (err, transactions) => {
     if (err) {
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: 'Failed to fetch transactions' });
     }
     
     return res.status(200).json(transactions);
-  });
-});
-
-// Add a debug endpoint to list users (deliberately insecure)
-app.get('/api/debug/users', (req, res) => {
-  console.log('Debug endpoint called to check users table');
-  db.all('SELECT id, username, password, email, role FROM users', (err, rows) => {
-    if (err) {
-      console.error('Debug endpoint error:', err);
-      return res.status(500).json({ error: err.message });
-    }
-    return res.status(200).json({ users: rows });
   });
 });
 
@@ -926,56 +959,81 @@ function setupAdminBot() {
   setInterval(simulateAdminViewingMessages, 1 * 60 * 1000);
 }
 
-// Add a blind second-order SQL injection vulnerability in profile updates
+// Blind second-order SQL injection vulnerability - PRESERVED BY DESIGN
 app.post('/api/users/update-profile', verifyToken, (req, res) => {
   const { bio, website, location } = req.body;
-  const userId = req.user.id;
   
-  // Protect FLAG field from being modified
-  // Only allow specific fields to be updated
+  // Log the profile update attempt
+  console.log(`Profile update for user ${req.user.id}:`, { bio, website, location });
   
-  // Store user input in the database without sanitization
-  const updateQuery = `UPDATE users SET bio = "${bio}", website = "${website}", location = "${location}" WHERE id = ${userId}`;
-  
-  db.run(updateQuery, function(err) {
-    if (err) {
-      console.error('Profile update error:', err.message);
-      return res.status(500).json({ error: err.message });
-    }
-    
-    // Successfully stored potentially malicious input
-    console.log(`Updated profile for user ${userId}`);
-    return res.status(200).json({ success: true, message: 'Profile updated successfully' });
-  });
+  // First part uses parameterized query and appears secure
+  try {
+    db.run(
+      `UPDATE users SET bio = ?, website = ?, location = ? WHERE id = ?`,
+      [bio, website, location, req.user.id],
+      function(err) {
+        if (err) {
+          console.error('Error updating profile:', err.message);
+          return res.status(500).json({ error: 'Failed to update profile' });
+        }
+        
+        // Create a profile_updates table if it doesn't exist
+        db.run(`CREATE TABLE IF NOT EXISTS profile_updates (
+          id INTEGER PRIMARY KEY,
+          user_id INTEGER,
+          field TEXT,
+          old_value TEXT,
+          new_value TEXT,
+          date TEXT
+        )`, function(err) {
+          if (err) {
+            console.error('Error creating profile_updates table:', err.message);
+          }
+          
+          // VULNERABLE BY DESIGN: Second-order SQL injection happens here
+          if (location) {
+            // Directly concatenating user input into SQL query
+            const dateStr = new Date().toISOString();
+            const updateQuery = `INSERT INTO profile_updates (user_id, field, new_value, date) 
+              VALUES (${req.user.id}, 'location', '${location}', '${dateStr}')`;
+            
+            // Execute the vulnerable query
+            db.run(updateQuery, function(err) {
+              if (err) {
+                // The error is hidden from the user, making this a blind injection
+                console.error('Error logging profile update:', err.message);
+              }
+            });
+          }
+        });
+        
+        return res.status(200).json({ 
+          success: true, 
+          message: 'Profile updated successfully'
+        });
+      }
+    );
+  } catch (error) {
+    console.error('Profile update error:', error.message);
+    return res.status(500).json({ error: 'Failed to update profile' });
+  }
 });
 
-// Add an admin report endpoint that uses the stored data in a second query (blind)
-// This creates a second-order SQL injection vulnerability
-app.get('/api/admin/user-report', verifyToken, (req, res) => {
-  // Weak authorization check
-  if (req.user.role !== 'admin' && req.query.isAdmin !== 'true') {
+// Admin endpoint to view profile updates - executes second-order SQL injection
+app.get('/api/admin/profile-updates', verifyToken, (req, res) => {
+  if (req.user.role !== 'admin') {
     return res.status(403).json({ message: 'Unauthorized' });
   }
   
-  // This query uses user-supplied data from the database in another query
-  // The 'location' field can contain a SQL injection that will be triggered here
-  const reportQuery = `
-    SELECT u.id, u.username, u.email, u.role, u.bio,
-    (SELECT COUNT(*) FROM transactions WHERE sender_id = u.id OR receiver_id = u.id) as transaction_count,
-    (SELECT COUNT(*) FROM admin_messages WHERE user_id = u.id) as message_count,
-    (SELECT COUNT(*) FROM users WHERE location = u.location) as users_same_location
-    FROM users u
-    ORDER BY u.id
-  `;
-  
-  db.all(reportQuery, (err, users) => {
+  // This query executes any SQL injection payloads in the profile_updates table
+  // with admin privileges, completing the second-order injection
+  db.all(`SELECT * FROM profile_updates ORDER BY date DESC`, (err, updates) => {
     if (err) {
-      console.error('Admin report error:', err.message);
-      // The error will be silent to the user - making it a blind vulnerability
-      return res.status(500).json({ error: 'An error occurred generating the report' });
+      console.error('Error fetching profile updates:', err.message);
+      return res.status(500).json({ error: 'Failed to fetch profile updates' });
     }
     
-    return res.status(200).json(users);
+    return res.status(200).json(updates);
   });
 });
 
@@ -1146,62 +1204,445 @@ function setupHeadlessFeedbackBot() {
   setInterval(simulateHeadlessBrowser, 2 * 60 * 1000); // Every 2 minutes
 }
 
-// New endpoint to show exploit chain progress and hints
+// Endpoint to check exploit chain status
 app.get('/api/exploit-status', verifyToken, (req, res) => {
-  // Extract the current user's progress in the exploit chain
-  const stage = req.user.exploitStage || 'not_started';
+  const stages = [
+    'not_started',
+    'found_chain_key',
+    'idor_success',
+    'upload_success',
+    'command_ready',
+    'command_success'
+  ];
   
-  // Define the stages of the exploit chain and corresponding hints
-  const stages = {
-    'not_started': {
-      status: 'You have not started the exploit chain yet.',
-      hint: 'Try exploring the search functionality with SQL injection. Look for secrets.',
-      completion: '0%'
-    },
-    'found_chain_key': {
-      status: 'You have discovered the chain key through SQL injection!',
-      hint: 'Try using this key with the login endpoint. You need to add a special header.',
-      completion: '20%'
-    },
-    'idor_success': {
-      status: 'You have successfully exploited IDOR vulnerability!',
-      hint: 'Look for secret tokens that can help with file uploads or command injection.',
-      completion: '40%'
-    },
-    'upload_success': {
-      status: 'You have successfully uploaded to the executable directory!',
-      hint: 'Your file can now execute. Try finding the command injection token.',
-      completion: '60%'
-    },
-    'command_ready': {
-      status: 'You have all prerequisites for command injection!',
-      hint: 'Use your token with the admin report endpoint to execute commands.',
-      completion: '80%'
-    },
-    'command_success': {
-      status: 'You have successfully exploited command injection!',
-      hint: 'You have completed the full exploit chain. Congratulations!',
-      completion: '100%'
-    }
-  };
+  if (!req.user) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
   
-  // Return the current status and appropriate hint
-  const currentStage = stages[stage] || stages.not_started;
-  return res.status(200).json({
-    current_stage: stage,
-    status: currentStage.status,
-    hint: currentStage.hint,
-    completion: currentStage.completion,
-    chain_steps: [
-      'SQL Injection to find secrets',
-      'Login bypass with chain key',
-      'IDOR to access other profiles',
-      'File upload to executable directory',
-      'Command injection with proper token'
-    ],
-    // Include discovered secrets for detailed exploit status page
+  const currentStage = req.user.exploitStage || 'not_started';
+  const currentIndex = stages.indexOf(currentStage);
+  const completion = Math.round((currentIndex / (stages.length - 1)) * 100) + '%';
+  
+  let hint = '';
+  let nextStage = '';
+  
+  switch (currentStage) {
+    case 'not_started':
+      hint = 'Try looking for SQL injection vulnerabilities in the search function';
+      nextStage = 'found_chain_key';
+      break;
+    case 'found_chain_key':
+      hint = 'Now try to access another user\'s profile with IDOR using the x-profile-access header';
+      nextStage = 'idor_success';
+      break;
+    case 'idor_success':
+      hint = 'Try uploading a file to a special directory using x-upload-path header and xMode=true';
+      nextStage = 'upload_success';
+      break;
+    case 'upload_success':
+      hint = 'Try adding x-exploit-token to access admin command injection';
+      nextStage = 'command_ready';
+      break;
+    case 'command_ready':
+      hint = 'Execute commands through the Run Report feature';
+      nextStage = 'command_success';
+      break;
+    case 'command_success':
+      hint = 'You\'ve completed the main exploit chain! Now try other vulnerabilities like JWT manipulation, prototype pollution, and cookie-based SQL injection.';
+      nextStage = 'complete';
+      break;
+    default:
+      hint = 'Unknown stage';
+      nextStage = '';
+  }
+  
+  res.status(200).json({
+    status: currentStage,
+    nextStage: nextStage,
+    hint: hint,
+    completion: completion,
     discoveredSecrets: req.user.discoveredSecrets || {}
   });
+});
+
+// Helper function to extract JWT token from login endpoint
+app.get('/api/get-jwt-info', (req, res) => {
+  // Information disclosure vulnerability - reveals JWT details
+  // This helps users understand the JWT structure for the challenge
+  const token = req.headers['authorization'];
+  if (!token) {
+    return res.status(400).json({ message: 'No token provided' });
+  }
+  
+  try {
+    // Don't verify, just decode to show structure
+    const decoded = jwt.decode(token, { complete: true });
+    
+    // Intentionally leak information about the JWT
+    return res.status(200).json({
+      header: decoded.header,
+      payload: decoded.payload,
+      hint: 'JWT tokens are signed with a secret. The secret might be exposed in the source code or error messages.'
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+// Cookie-based SQL injection - adding a vulnerability where SQL injection can be performed via cookies
+app.get('/api/user-preferences', verifyToken, (req, res) => {
+  // Get theme from cookie - VULNERABLE TO SQL INJECTION BY DESIGN
+  const theme = req.cookies?.theme || 'default';
+  
+  console.log(`Loading preferences with theme: ${theme}`);
+  
+  // VULNERABLE BY DESIGN: Direct use of cookie value in SQL query
+  // This can be exploited with a cookie like: theme=dark' UNION SELECT password,username,email FROM users--
+  const query = `SELECT * FROM themes WHERE name = '${theme}'`;
+  
+  db.all(query, (err, themes) => {
+    if (err) {
+      // Suppresses the error but logs it - making this blind
+      console.error('Error in theme loading:', err.message);
+      return res.status(200).json({ 
+        theme: 'default',
+        message: 'Error loading theme, using default'
+      });
+    }
+    
+    // Success response
+    return res.status(200).json({
+      theme: theme,
+      settings: themes,
+      customCss: theme !== 'default' ? themes[0]?.custom_css : ''
+    });
+  });
+});
+
+// DOM-based XSS vulnerability - PRESERVED BY DESIGN
+app.get('/api/documentation', verifyToken, (req, res) => {
+  // Send HTML with JavaScript that uses fragment identifier (hash)
+  // This is vulnerable to DOM-based XSS via the URL fragment
+  // Example: /api/documentation#<img src=x onerror=alert(document.cookie)>
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>API Documentation</title>
+      <script>
+        // VULNERABLE BY DESIGN: Directly using location.hash without sanitization
+        window.onload = function() {
+          // Get the hash value from the URL (without the # symbol)
+          var section = window.location.hash.substring(1);
+          
+          // Use it to navigate to a section - DOM-based XSS vulnerability
+          if(section) {
+            // This is vulnerable - directly writing the hash to innerHTML
+            document.getElementById('section-title').innerHTML = 'Section: ' + section;
+            document.getElementById('content').innerHTML = 'Loading content for ' + section + '...';
+          }
+        };
+      </script>
+    </head>
+    <body>
+      <h1>API Documentation</h1>
+      <h2 id="section-title">Welcome</h2>
+      <div id="content">
+        <p>Select a section from the URL hash to view documentation.</p>
+        <p>Example: <code>#authentication</code>, <code>#endpoints</code>, etc.</p>
+      </div>
+    </body>
+    </html>
+  `;
+  
+  res.setHeader('Content-Type', 'text/html');
+  return res.status(200).send(htmlContent);
+});
+
+// CSRF vulnerability for email updates - PRESERVED BY DESIGN
+app.post('/api/update-email', verifyToken, (req, res) => {
+  const { email } = req.body;
+  const userId = req.user.id;
+  
+  // VULNERABLE BY DESIGN: No CSRF token validation
+  // This can be exploited with a form on an attacker's site
+  db.run(
+    'UPDATE users SET email = ? WHERE id = ?',
+    [email, userId],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to update email' });
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Email updated successfully'
+      });
+    }
+  );
+});
+
+// Race condition vulnerability - PRESERVED BY DESIGN
+app.post('/api/quick-transfer', verifyToken, async (req, res) => {
+  const { to, amount } = req.body;
+  const from = req.user.id;
+  
+  // Parse amount as float
+  const parsedAmount = parseFloat(amount);
+  
+  if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    return res.status(400).json({ error: 'Invalid amount' });
+  }
+  
+  console.log(`Transfer requested: $${parsedAmount} from user ${from} to user ${to}`);
+  
+  // VULNERABLE BY DESIGN: No transaction lock - vulnerable to race conditions
+  try {
+    // Get sender's current balance
+    db.get('SELECT balance FROM users WHERE id = ?', [from], (err, sender) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!sender) {
+        return res.status(404).json({ error: 'Sender not found' });
+      }
+      
+      if (sender.balance < parsedAmount) {
+        return res.status(400).json({ error: 'Insufficient funds' });
+      }
+      
+      // Add an artificial delay to make race condition easier to exploit
+      setTimeout(() => {
+        // Update sender balance
+        db.run(
+          'UPDATE users SET balance = balance - ? WHERE id = ?',
+          [parsedAmount, from],
+          function(err) {
+            if (err) {
+              return res.status(500).json({ error: 'Failed to update sender balance' });
+            }
+            
+            // Update receiver balance
+            db.run(
+              'UPDATE users SET balance = balance + ? WHERE id = ?',
+              [parsedAmount, to],
+              function(err) {
+                if (err) {
+                  return res.status(500).json({ error: 'Failed to update receiver balance' });
+                }
+                
+                // Create transaction record
+                const date = new Date().toISOString();
+                db.run(
+                  'INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (?, ?, ?, ?, ?)',
+                  [from, to, parsedAmount, date, 'Quick transfer'],
+                  function(err) {
+                    if (err) {
+                      return res.status(500).json({ error: 'Failed to record transaction' });
+                    }
+                    
+                    return res.status(200).json({
+                      success: true,
+                      message: 'Transfer successful',
+                      newBalance: sender.balance - parsedAmount
+                    });
+                  }
+                );
+              }
+            );
+          }
+        );
+      }, 500); // 500ms delay to make race condition exploitable
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Transfer failed' });
+  }
+});
+
+// Prototype pollution vulnerability - PRESERVED BY DESIGN
+app.post('/api/merge-settings', verifyToken, (req, res) => {
+  const userSettings = req.body;
+  
+  // Validate if the input is an object
+  if (!userSettings || typeof userSettings !== 'object') {
+    return res.status(400).json({ error: 'Settings must be an object' });
+  }
+  
+  console.log('Merging user settings:', userSettings);
+  
+  // Get current user settings from database
+  db.get('SELECT settings FROM user_settings WHERE user_id = ?', [req.user.id], (err, row) => {
+    let currentSettings = {};
+    
+    if (row && row.settings) {
+      try {
+        currentSettings = JSON.parse(row.settings);
+      } catch (e) {
+        console.error('Error parsing settings:', e);
+      }
+    }
+    
+    // VULNERABLE BY DESIGN: Unsafe recursive merge that allows prototype pollution
+    function unsafeMerge(target, source) {
+      for (const key in source) {
+        if (source[key] && typeof source[key] === 'object') {
+          if (!target[key]) target[key] = {};
+          unsafeMerge(target[key], source[key]);
+        } else {
+          target[key] = source[key];
+        }
+      }
+      return target;
+    }
+    
+    // Perform the unsafe merge
+    const mergedSettings = unsafeMerge(currentSettings, userSettings);
+    
+    // Save merged settings back to database
+    const settingsStr = JSON.stringify(mergedSettings);
+    
+    db.run(
+      'INSERT OR REPLACE INTO user_settings (user_id, settings) VALUES (?, ?)',
+      [req.user.id, settingsStr],
+      function(err) {
+        if (err) {
+          return res.status(500).json({ error: 'Failed to save settings' });
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Settings updated successfully',
+          settings: mergedSettings
+        });
+      }
+    );
+  });
+});
+
+// API for checking if user is admin - vulnerable to prototype pollution
+app.get('/api/check-admin', verifyToken, (req, res) => {
+  // VULNERABLE BY DESIGN: This endpoint is affected by prototype pollution
+  // If Object.prototype.isAdmin has been polluted, this will return true
+  const isAdmin = req.user.role === 'admin' || {};  // The empty object can be polluted
+  
+  return res.status(200).json({
+    admin: isAdmin,
+    message: isAdmin ? 'User is admin' : 'User is not admin'
+  });
+});
+
+// Theme setting endpoint - demonstrates a normal operation for the cookie functionality
+app.post('/api/set-theme', verifyToken, (req, res) => {
+  const { theme } = req.body;
+  
+  if (!theme) {
+    return res.status(400).json({ message: 'Theme name is required' });
+  }
+  
+  // Set a cookie - this will later be used in the vulnerable endpoint
+  res.cookie('theme', theme, { 
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    httpOnly: true 
+  });
+  
+  return res.status(200).json({ 
+    success: true, 
+    message: 'Theme set successfully',
+    note: 'Your theme preference has been saved as a cookie'
+  });
+});
+
+// Endpoint to set a theme via direct cookie manipulation - helpful for testing
+app.get('/api/theme/:name', (req, res) => {
+  const theme = req.params.name;
+  
+  // Set a cookie directly - makes it easier to test the vulnerability
+  res.cookie('theme', theme, { 
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    httpOnly: true 
+  });
+  
+  return res.status(200).json({ 
+    success: true, 
+    message: `Theme cookie set to: ${theme}`,
+    hint: 'Try visiting /api/user-preferences to see how this cookie is used'
+  });
+});
+
+// Enable cookie setting through an HTML form
+app.get('/api/cookie-form', (req, res) => {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Set Theme Cookie</title>
+    </head>
+    <body>
+      <h1>Set Theme Cookie</h1>
+      <p>This form allows you to set the theme cookie directly. You can use this to test the SQL injection vulnerability.</p>
+      
+      <form action="/api/theme-form-submit" method="post">
+        <label for="theme">Theme Value:</label>
+        <input type="text" id="theme" name="theme" value="dark">
+        <br><br>
+        <p><strong>SQL Injection Examples:</strong></p>
+        <ul>
+          <li><code>dark' UNION SELECT 1,2,3--</code></li>
+          <li><code>dark' UNION SELECT username,password,email FROM users--</code></li>
+        </ul>
+        <br>
+        <input type="submit" value="Set Cookie">
+      </form>
+    </body>
+    </html>
+  `;
+  
+  res.setHeader('Content-Type', 'text/html');
+  return res.status(200).send(html);
+});
+
+// Handle the form submission
+app.post('/api/theme-form-submit', (req, res) => {
+  const { theme } = req.body;
+  
+  if (!theme) {
+    return res.status(400).send('Theme is required');
+  }
+  
+  // Set the cookie
+  res.cookie('theme', theme, { 
+    maxAge: 24 * 60 * 60 * 1000, 
+    httpOnly: true 
+  });
+  
+  // Redirect to the vulnerable endpoint
+  res.redirect('/api/user-preferences');
+});
+
+// SSRF vulnerability - PRESERVED BY DESIGN
+app.get('/api/proxy', verifyToken, (req, res) => {
+  const { url } = req.query;
+  
+  if (!url) {
+    return res.status(400).json({ 
+      error: 'URL parameter is required',
+      example: '/api/proxy?url=https://api.github.com/users'
+    });
+  }
+  
+  console.log(`Proxy request to: ${url}`);
+  
+  // VULNERABLE BY DESIGN: No validation of URL - allows access to internal resources
+  fetch(url)
+    .then(response => response.text())
+    .then(data => {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.status(200).send(data);
+    })
+    .catch(error => {
+      return res.status(500).json({ error: 'Failed to fetch URL' });
+    });
 });
 
 // Start the server
