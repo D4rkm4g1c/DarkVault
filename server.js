@@ -279,107 +279,107 @@ function setupDatabase() {
               return;
             }
             console.log('Leaderboard table created successfully');
+          
+          // Create secrets table
+          db.run(`CREATE TABLE IF NOT EXISTS secrets (
+            id INTEGER PRIMARY KEY,
+            key_name TEXT UNIQUE,
+            key_value TEXT
+          )`, function(err) {
+            if (err) {
+              console.error('Error creating secrets table:', err.message);
+              return;
+            }
+            console.log('Secrets table created successfully');
             
-            // Create secrets table
-            db.run(`CREATE TABLE IF NOT EXISTS secrets (
+            // Insert initial secrets
+            db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
+              if (!row) {
+                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_key')");
+                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('advanced_chain_key', 'chain_9a74c8')");
+                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'access')");
+                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_token')");
+              }
+            });
+            
+            // Create themes table
+            db.run(`CREATE TABLE IF NOT EXISTS themes (
               id INTEGER PRIMARY KEY,
-              key_name TEXT UNIQUE,
-              key_value TEXT
+              name TEXT UNIQUE,
+              description TEXT,
+              custom_css TEXT
             )`, function(err) {
               if (err) {
-                console.error('Error creating secrets table:', err.message);
+                console.error('Error creating themes table:', err.message);
                 return;
               }
-              console.log('Secrets table created successfully');
               
-              // Insert initial secrets
-              db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
-                if (!row) {
-                  db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_key')");
-                  db.run("INSERT INTO secrets (key_name, key_value) VALUES ('advanced_chain_key', 'chain_9a74c8')");
-                  db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'access')");
-                  db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_token')");
-                }
-              });
+              // Insert default themes
+              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('default', 'Default theme', 'body { background-color: white; }')");
+              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('dark', 'Dark theme', 'body { background-color: #222; color: #eee; }')");
+              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('light', 'Light theme', 'body { background-color: #f8f9fa; }')");
+              console.log('Themes table created and populated');
               
-              // Create themes table
-              db.run(`CREATE TABLE IF NOT EXISTS themes (
-                id INTEGER PRIMARY KEY,
-                name TEXT UNIQUE,
-                description TEXT,
-                custom_css TEXT
+              // Create user_settings table
+              db.run(`CREATE TABLE IF NOT EXISTS user_settings (
+                user_id INTEGER PRIMARY KEY,
+                settings TEXT
               )`, function(err) {
                 if (err) {
-                  console.error('Error creating themes table:', err.message);
+                  console.error('Error creating user_settings table:', err.message);
                   return;
                 }
+                console.log('User settings table created');
                 
-                // Insert default themes
-                db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('default', 'Default theme', 'body { background-color: white; }')");
-                db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('dark', 'Dark theme', 'body { background-color: #222; color: #eee; }')");
-                db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('light', 'Light theme', 'body { background-color: #f8f9fa; }')");
-                console.log('Themes table created and populated');
-                
-                // Create user_settings table
-                db.run(`CREATE TABLE IF NOT EXISTS user_settings (
-                  user_id INTEGER PRIMARY KEY,
-                  settings TEXT
+                // Create profile_updates table
+                db.run(`CREATE TABLE IF NOT EXISTS profile_updates (
+                  id INTEGER PRIMARY KEY,
+                  user_id INTEGER,
+                  field TEXT,
+                  old_value TEXT,
+                  new_value TEXT,
+                  date TEXT
                 )`, function(err) {
                   if (err) {
-                    console.error('Error creating user_settings table:', err.message);
+                    console.error('Error creating profile_updates table:', err.message);
                     return;
                   }
-                  console.log('User settings table created');
+                  console.log('Profile updates table created');
                   
-                  // Create profile_updates table
-                  db.run(`CREATE TABLE IF NOT EXISTS profile_updates (
-                    id INTEGER PRIMARY KEY,
-                    user_id INTEGER,
-                    field TEXT,
-                    old_value TEXT,
-                    new_value TEXT,
-                    date TEXT
+                  // Create feedback table
+                  db.run(`CREATE TABLE IF NOT EXISTS feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT,
+                    message TEXT,
+                    rating INTEGER,
+                    date TEXT,
+                    reviewed INTEGER DEFAULT 0
                   )`, function(err) {
                     if (err) {
-                      console.error('Error creating profile_updates table:', err.message);
+                      console.error('Error creating feedback table:', err.message);
                       return;
                     }
-                    console.log('Profile updates table created');
+                    console.log('Feedback table created');
                     
-                    // Create feedback table
-                    db.run(`CREATE TABLE IF NOT EXISTS feedback (
-                      id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      email TEXT,
-                      message TEXT,
-                      rating INTEGER,
-                      date TEXT,
-                      reviewed INTEGER DEFAULT 0
-                    )`, function(err) {
+                    // Check if there are any users in the database first
+                    db.get("SELECT COUNT(*) as count FROM users", (err, result) => {
                       if (err) {
-                        console.error('Error creating feedback table:', err.message);
+                        console.error('Error checking users table:', err.message);
                         return;
                       }
-                      console.log('Feedback table created');
                       
-                      // Check if there are any users in the database first
-                      db.get("SELECT COUNT(*) as count FROM users", (err, result) => {
-                        if (err) {
-                          console.error('Error checking users table:', err.message);
-                          return;
-                        }
+                      // Only insert users if the users table is empty
+                      if (result.count === 0) {
+                        console.log('Users table is empty, creating default users');
                         
-                        // Only insert users if the users table is empty
-                        if (result.count === 0) {
-                          console.log('Users table is empty, creating default users');
-                          
-                          // Insert admin user
-                          db.run("INSERT INTO users (username, password, email, role, balance) VALUES ('admin', 'admin123', 'admin@darkvault.com', 'admin', 9999.99)");
-                          console.log('Admin user created');
-                          
+                        // Insert admin user
+                        db.run("INSERT INTO users (username, password, email, role, balance) VALUES ('admin', 'admin123', 'admin@darkvault.com', 'admin', 9999.99)");
+                        console.log('Admin user created');
+                        
                           // Insert only one regular user for testing
                           const user = { username: 'alice', password: 'password123', email: 'alice@example.com', role: 'user' };
                           db.run("INSERT INTO users (username, password, email, role, balance) VALUES (?, ?, ?, ?, ?)",
-                            [user.username, user.password, user.email, user.role, 1000.0],
+                            [user.username, user.password, user.email, user.role, 1000.0], 
                             function(err) {
                               if (err) {
                                 console.error(`Error creating user ${user.username}:`, err.message);
@@ -389,10 +389,10 @@ function setupDatabase() {
                               console.log('Database setup completed successfully');
                             }
                           );
-                        } else {
-                          console.log('Users already exist in the database, skipping user creation');
-                          console.log('Database setup completed successfully');
-                        }
+                      } else {
+                        console.log('Users already exist in the database, skipping user creation');
+                        console.log('Database setup completed successfully');
+                      }
                       });
                     });
                   });
@@ -1200,13 +1200,13 @@ app.get('/api/proxy', verifyToken, (req, res) => {
       
       // Send the file content as response
       return res.status(200).send(fileContent);
-    } catch (error) {
+                } catch (error) {
       return res.status(500).json({ 
         error: 'File read error', 
         message: error.message
-      });
-    }
-  }
+              });
+            }
+          }
   
   // VULNERABLE BY DESIGN: No validation of URL - allows access to internal resources
   fetch(url)
@@ -1217,8 +1217,8 @@ app.get('/api/proxy', verifyToken, (req, res) => {
     })
     .catch(error => {
       return res.status(500).json({ error: 'Failed to fetch URL' });
+      });
     });
-});
 
 // Blind second-order SQL injection vulnerability - PRESERVED BY DESIGN
 app.post('/api/users/update-profile', verifyToken, (req, res) => {

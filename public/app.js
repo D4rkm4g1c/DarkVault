@@ -110,10 +110,7 @@ loginForm.addEventListener('submit', async (e) => {
     const data = await response.json();
     
     if (response.ok) {
-      // Store token in localStorage
-      localStorage.setItem('token', data.token);
-      currentUser = data.user;
-      showLoggedInState();
+      handleLoginSuccess(data);
     } else {
       alert(data.message || 'Login failed. Please check your credentials.');
     }
@@ -924,4 +921,69 @@ btnUploadSubmit.addEventListener('click', async () => {
     console.error('Upload error:', error);
     alert('An error occurred during upload');
   }
-}); 
+});
+
+// Define a showNotification function if it doesn't exist
+function showNotification(message, type = 'info', duration = 5000) {
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.className = `alert alert-${type} alert-dismissible fade show fixed-top w-75 mx-auto mt-2`;
+  notification.style.zIndex = '9999';
+  notification.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  `;
+  
+  // Add to document
+  document.body.appendChild(notification);
+  
+  // Auto-dismiss after duration
+  setTimeout(() => {
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 500);
+  }, duration);
+  
+  return notification;
+}
+
+// Define a function to check if this is the first time the user has visited
+function checkFirstTimeVisitor() {
+  if (!localStorage.getItem('leaderboardNotificationShown')) {
+    // Show a notification about the leaderboard
+    showNotification('Welcome to DarkVault! Check out our new Hacker Leaderboard to see your vulnerability discoveries and compare with others.', 'info', 10000);
+    
+    // Mark that we've shown this notification
+    localStorage.setItem('leaderboardNotificationShown', 'true');
+  }
+}
+
+// Add a function to handle login success
+function handleLoginSuccess(data) {
+  // Store the token
+  localStorage.setItem('token', data.token);
+  
+  // Update user info
+  currentUser = data.user;
+  
+  // Show app section, hide auth section
+  document.getElementById('auth-section').style.display = 'none';
+  document.getElementById('app-section').style.display = 'block';
+  document.getElementById('btn-logout').style.display = 'inline-block';
+  
+  // Check if admin
+  if (currentUser.role === 'admin') {
+    document.getElementById('admin-nav-item').style.display = 'list-item';
+  }
+  
+  // Update UI with user data
+  updateUserInfoUI();
+  
+  // Show home section
+  showSection('home');
+  
+  // Fetch transactions
+  fetchTransactions();
+  
+  // Check for leaderboard notification
+  checkFirstTimeVisitor();
+} 
