@@ -176,7 +176,7 @@ const db = new sqlite3.Database('./bank.db', (err) => {
 function setupDatabase() {
   console.log('Setting up database...');
   
-  // Create users table
+  // Create users table first, then create other tables
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     username TEXT UNIQUE,
@@ -186,138 +186,205 @@ function setupDatabase() {
     balance REAL DEFAULT 1000.0,
     bio TEXT,
     website TEXT,
-    location TEXT
-  )`);
-  
-  // Create transactions table
-  db.run(`CREATE TABLE IF NOT EXISTS transactions (
-    id INTEGER PRIMARY KEY,
-    sender_id INTEGER,
-    receiver_id INTEGER,
-    amount REAL,
-    date TEXT,
-    note TEXT
-  )`);
-  
-  // Create admin messages table
-  db.run(`CREATE TABLE IF NOT EXISTS admin_messages (
-    id INTEGER PRIMARY KEY,
-    user_id INTEGER,
-    message TEXT,
-    date TEXT
-  )`);
-  
-  // Create exploit_chain table to track user progress
-  db.run(`CREATE TABLE IF NOT EXISTS exploit_chain (
-    user_id INTEGER PRIMARY KEY,
-    stage TEXT DEFAULT 'not_started',
-    discovered_secrets TEXT,
-    last_updated TEXT
-  )`);
-  
-  // Create secrets table for chain requirements
-  db.run(`CREATE TABLE IF NOT EXISTS secrets (
-    id INTEGER PRIMARY KEY,
-    key_name TEXT UNIQUE,
-    key_value TEXT
+    location TEXT,
+    last_login TEXT
   )`, function(err) {
     if (err) {
-      console.error('Error creating secrets table:', err.message);
-    } else {
-      // Insert initial secrets
-      db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
-        if (!row) {
-          db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_key')");
-          db.run("INSERT INTO secrets (key_name, key_value) VALUES ('advanced_chain_key', 'chain_9a74c8')");
-          db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'access')");
-          db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_token')");
-        }
-      });
+      console.error('Error creating users table:', err.message);
+      return;
     }
-  });
-  
-  // Create themes table for cookie-based SQL injection
-  db.run(`CREATE TABLE IF NOT EXISTS themes (
-    id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE,
-    description TEXT,
-    custom_css TEXT
-  )`, function(err) {
-    if (err) {
-      console.error('Error creating themes table:', err.message);
-    } else {
-      // Insert some default themes
-      db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('default', 'Default theme', 'body { background-color: white; }')");
-      db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('dark', 'Dark theme', 'body { background-color: #222; color: #eee; }')");
-      db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('light', 'Light theme', 'body { background-color: #f8f9fa; }')");
-      console.log('Themes table created and populated');
-    }
-  });
-  
-  // Create user_settings table for prototype pollution
-  db.run(`CREATE TABLE IF NOT EXISTS user_settings (
-    user_id INTEGER PRIMARY KEY,
-    settings TEXT
-  )`, function(err) {
-    if (err) {
-      console.error('Error creating user_settings table:', err.message);
-    } else {
-      console.log('User settings table created');
-    }
-  });
-  
-  // Create profile_updates table for second-order SQL injection
-  db.run(`CREATE TABLE IF NOT EXISTS profile_updates (
-    id INTEGER PRIMARY KEY,
-    user_id INTEGER,
-    field TEXT,
-    old_value TEXT,
-    new_value TEXT,
-    date TEXT
-  )`, function(err) {
-    if (err) {
-      console.error('Error creating profile_updates table:', err.message);
-    } else {
-      console.log('Profile updates table created');
-    }
-  });
-  
-  // Insert admin user if not exists
-  db.get("SELECT * FROM users WHERE username = 'admin'", (err, user) => {
-    if (err) {
-      console.error('Error checking for admin user:', err.message);
-    } else if (!user) {
-      db.run("INSERT INTO users (username, password, email, role, balance) VALUES ('admin', 'admin123', 'admin@darkvault.com', 'admin', 9999.99)");
-      console.log('Admin user created');
-    }
-  });
-  
-  // Insert regular users if not exists
-  const users = [
-    { username: 'alice', password: 'password123', email: 'alice@example.com', role: 'user' },
-    { username: 'bob', password: 'password123', email: 'bob@example.com', role: 'user' }
-  ];
-  
-  users.forEach(user => {
-    db.get(`SELECT * FROM users WHERE username = '${user.username}'`, (err, existingUser) => {
+    console.log('Users table created successfully');
+    
+    // Create transactions table
+    db.run(`CREATE TABLE IF NOT EXISTS transactions (
+      id INTEGER PRIMARY KEY,
+      sender_id INTEGER,
+      receiver_id INTEGER,
+      amount REAL,
+      date TEXT,
+      note TEXT
+    )`, function(err) {
       if (err) {
-        console.error(`Error checking for user ${user.username}:`, err.message);
-      } else if (!existingUser) {
-        db.run(`INSERT INTO users (username, password, email, role, balance) VALUES ('${user.username}', '${user.password}', '${user.email}', '${user.role}', 1000.0)`);
-        console.log(`User ${user.username} created`);
+        console.error('Error creating transactions table:', err.message);
+        return;
       }
+      console.log('Transactions table created successfully');
+      
+      // Create admin messages table
+      db.run(`CREATE TABLE IF NOT EXISTS admin_messages (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER,
+        message TEXT,
+        date TEXT
+      )`, function(err) {
+        if (err) {
+          console.error('Error creating admin_messages table:', err.message);
+          return;
+        }
+        console.log('Admin messages table created successfully');
+        
+        // Create exploit_chain table
+        db.run(`CREATE TABLE IF NOT EXISTS exploit_chain (
+          user_id INTEGER PRIMARY KEY,
+          stage TEXT DEFAULT 'not_started',
+          discovered_secrets TEXT,
+          last_updated TEXT
+        )`, function(err) {
+          if (err) {
+            console.error('Error creating exploit_chain table:', err.message);
+            return;
+          }
+          console.log('Exploit chain table created successfully');
+          
+          // Create secrets table
+          db.run(`CREATE TABLE IF NOT EXISTS secrets (
+            id INTEGER PRIMARY KEY,
+            key_name TEXT UNIQUE,
+            key_value TEXT
+          )`, function(err) {
+            if (err) {
+              console.error('Error creating secrets table:', err.message);
+              return;
+            }
+            console.log('Secrets table created successfully');
+            
+            // Insert initial secrets
+            db.get("SELECT * FROM secrets WHERE key_name = 'chain_key'", (err, row) => {
+              if (!row) {
+                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('chain_key', 'chain_key')");
+                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('advanced_chain_key', 'chain_9a74c8')");
+                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('idor_token', 'access')");
+                db.run("INSERT INTO secrets (key_name, key_value) VALUES ('x_exploit_token', 'cmd_token')");
+              }
+            });
+            
+            // Create themes table
+            db.run(`CREATE TABLE IF NOT EXISTS themes (
+              id INTEGER PRIMARY KEY,
+              name TEXT UNIQUE,
+              description TEXT,
+              custom_css TEXT
+            )`, function(err) {
+              if (err) {
+                console.error('Error creating themes table:', err.message);
+                return;
+              }
+              
+              // Insert default themes
+              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('default', 'Default theme', 'body { background-color: white; }')");
+              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('dark', 'Dark theme', 'body { background-color: #222; color: #eee; }')");
+              db.run("INSERT OR IGNORE INTO themes (name, description, custom_css) VALUES ('light', 'Light theme', 'body { background-color: #f8f9fa; }')");
+              console.log('Themes table created and populated');
+              
+              // Create user_settings table
+              db.run(`CREATE TABLE IF NOT EXISTS user_settings (
+                user_id INTEGER PRIMARY KEY,
+                settings TEXT
+              )`, function(err) {
+                if (err) {
+                  console.error('Error creating user_settings table:', err.message);
+                  return;
+                }
+                console.log('User settings table created');
+                
+                // Create profile_updates table
+                db.run(`CREATE TABLE IF NOT EXISTS profile_updates (
+                  id INTEGER PRIMARY KEY,
+                  user_id INTEGER,
+                  field TEXT,
+                  old_value TEXT,
+                  new_value TEXT,
+                  date TEXT
+                )`, function(err) {
+                  if (err) {
+                    console.error('Error creating profile_updates table:', err.message);
+                    return;
+                  }
+                  console.log('Profile updates table created');
+                  
+                  // Create feedback table
+                  db.run(`CREATE TABLE IF NOT EXISTS feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT,
+                    message TEXT,
+                    rating INTEGER,
+                    date TEXT,
+                    reviewed INTEGER DEFAULT 0
+                  )`, function(err) {
+                    if (err) {
+                      console.error('Error creating feedback table:', err.message);
+                      return;
+                    }
+                    console.log('Feedback table created');
+                    
+                    // NOW that all tables are created, insert users
+                    // Insert admin user
+                    db.get("SELECT * FROM users WHERE username = 'admin'", (err, user) => {
+                      if (err) {
+                        console.error('Error checking for admin user:', err.message);
+                      } else if (!user) {
+                        db.run("INSERT INTO users (username, password, email, role, balance) VALUES ('admin', 'admin123', 'admin@darkvault.com', 'admin', 9999.99)");
+                        console.log('Admin user created');
+                      }
+                      
+                      // Insert regular users
+                      const users = [
+                        { username: 'alice', password: 'password123', email: 'alice@example.com', role: 'user' },
+                        { username: 'bob', password: 'password123', email: 'bob@example.com', role: 'user' }
+                      ];
+                      
+                      // Use a recursive function to insert users in sequence
+                      function insertUser(index) {
+                        if (index >= users.length) {
+                          // All users inserted, now insert bots
+                          db.get("SELECT * FROM users WHERE username = 'admin_message_bot'", (err, user) => {
+                            if (err) {
+                              console.error('Error checking for bot user:', err.message);
+                            } else if (!user) {
+                              db.run("INSERT INTO users (username, password, email, role) VALUES ('admin_message_bot', 'botpassword1', 'message_bot@darkvault.com', 'bot')");
+                              db.run("INSERT INTO users (username, password, email, role) VALUES ('admin_feedback_bot', 'botpassword2', 'feedback_bot@darkvault.com', 'bot')");
+                              console.log('Bot users created');
+                            }
+                            console.log('Database setup completed successfully');
+                          });
+                          return;
+                        }
+                        
+                        const user = users[index];
+                        db.get(`SELECT * FROM users WHERE username = ?`, [user.username], (err, existingUser) => {
+                          if (err) {
+                            console.error(`Error checking for user ${user.username}:`, err.message);
+                            insertUser(index + 1); // Continue with next user
+                          } else if (!existingUser) {
+                            db.run(`INSERT INTO users (username, password, email, role, balance) VALUES (?, ?, ?, ?, ?)`, 
+                              [user.username, user.password, user.email, user.role, 1000.0], 
+                              function(err) {
+                                if (err) {
+                                  console.error(`Error creating user ${user.username}:`, err.message);
+                                } else {
+                                  console.log(`User ${user.username} created`);
+                                }
+                                insertUser(index + 1); // Continue with next user
+                              }
+                            );
+                          } else {
+                            console.log(`User ${user.username} already exists`);
+                            insertUser(index + 1); // Continue with next user
+                          }
+                        });
+                      }
+                      
+                      // Start inserting users
+                      insertUser(0);
+                    });
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
     });
-  });
-  
-  // Add admin bots for automation
-  db.get("SELECT * FROM users WHERE username = 'admin_message_bot'", (err, user) => {
-    if (err) {
-      console.error('Error checking for bot user:', err.message);
-    } else if (!user) {
-      db.run("INSERT INTO users (username, password, email, role) VALUES ('admin_message_bot', 'botpassword1', 'message_bot@darkvault.com', 'bot')");
-      db.run("INSERT INTO users (username, password, email, role) VALUES ('admin_feedback_bot', 'botpassword2', 'feedback_bot@darkvault.com', 'bot')");
-      console.log('Bot users created');
-    }
   });
 }
 
@@ -379,7 +446,16 @@ app.post('/api/login', (req, res) => {
     );
 
     // Update user's last login
-    db.run('UPDATE users SET last_login = ? WHERE id = ?', [new Date().toISOString(), user.id]);
+    try {
+      db.run('UPDATE users SET last_login = ? WHERE id = ?', [new Date().toISOString(), user.id], function(err) {
+        if (err) {
+          // If there's an error updating last_login, just log it but don't fail the login
+          console.warn('Warning: Could not update last_login:', err.message);
+        }
+      });
+    } catch (error) {
+      console.warn('Warning: Exception when updating last_login:', error.message);
+    }
     
     // Log successful login attempts
     console.log(`User login successful: ${user.username} (ID: ${user.id})`);
