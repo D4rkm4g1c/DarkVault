@@ -462,6 +462,11 @@ app.get('/api/debug/users', (req, res) => {
   });
 });
 
+// Add a simple health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'up', time: new Date().toISOString() });
+});
+
 // Add error handling middleware at the end of the file, before app.listen
 // Error handling middleware
 app.use((err, req, res, next) => {

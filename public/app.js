@@ -1,6 +1,7 @@
 // Global variables
 let currentUser = null;
-const API_URL = 'http://localhost:3000/api';
+// Use current domain for API instead of hardcoded localhost
+const API_URL = `${window.location.protocol}//${window.location.host}/api`;
 
 // DOM Elements
 const loginForm = document.getElementById('login-form');
@@ -118,6 +119,9 @@ registerForm.addEventListener('submit', async (e) => {
   const email = document.getElementById('register-email').value;
   
   try {
+    console.log('Attempting to register with:', { username, email });
+    console.log('API URL:', API_URL);
+    
     const response = await fetch(`${API_URL}/register`, {
       method: 'POST',
       headers: {
@@ -137,8 +141,8 @@ registerForm.addEventListener('submit', async (e) => {
       alert(`Registration error: ${data.error || 'Unknown error'}`);
     }
   } catch (error) {
-    console.error('Register error:', error);
-    alert(`Error during registration: ${error.message}`);
+    console.error('Register error details:', error);
+    alert(`Error during registration: ${error.message}. Check console for details.`);
   }
 });
 
