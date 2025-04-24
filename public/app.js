@@ -15,12 +15,14 @@ const navHome = document.getElementById('nav-home');
 const navTransfer = document.getElementById('nav-transfer');
 const navTransactions = document.getElementById('nav-transactions');
 const navProfile = document.getElementById('nav-profile');
+const navExploits = document.getElementById('nav-exploits');
 const navAdmin = document.getElementById('nav-admin');
 const adminSection = document.getElementById('admin-section');
 const homeSection = document.getElementById('home-section');
 const transferSection = document.getElementById('transfer-section');
 const transactionsSection = document.getElementById('transactions-section');
 const profileSection = document.getElementById('profile-section');
+const exploitsSection = document.getElementById('exploits-section');
 const adminSectionContent = document.getElementById('admin-section-content');
 const transferForm = document.getElementById('transfer-form');
 const messageForm = document.getElementById('message-form');
@@ -203,9 +205,16 @@ function showLoggedInState() {
   logoutBtn.style.display = 'block';
   
   // Update user info display
-  document.getElementById('summary-username').textContent = currentUser.username;
+  const username = currentUser.username;
+  document.getElementById('summary-username').textContent = username;
   document.getElementById('summary-balance').textContent = currentUser.balance.toFixed(2);
   document.getElementById('summary-role').textContent = currentUser.role;
+  document.getElementById('summary-role-badge').textContent = currentUser.role;
+  document.getElementById('summary-id').textContent = currentUser.id;
+  
+  // Set user initial (first letter of username)
+  document.getElementById('user-initial').textContent = username.charAt(0).toUpperCase();
+  
   userBalance.textContent = `Balance: $${currentUser.balance.toFixed(2)}`;
   
   // Update profile section
@@ -243,6 +252,12 @@ function showLoggedInState() {
   
   // Load transactions
   loadTransactions();
+  
+  // Add event listener for quick balance transfer button
+  const quickBalanceTransfer = document.getElementById('quick-balance-transfer');
+  if (quickBalanceTransfer) {
+    quickBalanceTransfer.addEventListener('click', () => showSection(transferSection));
+  }
 }
 
 // Navigation
@@ -253,6 +268,7 @@ navTransactions.addEventListener('click', () => {
   showSection(transactionsSection);
 });
 navProfile.addEventListener('click', () => showSection(profileSection));
+navExploits.addEventListener('click', () => showSection(exploitsSection));
 navAdmin.addEventListener('click', () => {
   loadAdminMessages();
   showSection(adminSectionContent);
@@ -743,6 +759,30 @@ async function checkExploitProgress() {
       exploitStage.textContent = data.status;
       exploitHint.textContent = data.hint;
       
+      // Update completion percentage
+      const completionPercentage = document.getElementById('completion-percentage');
+      if (completionPercentage) {
+        completionPercentage.textContent = data.completion;
+      }
+      
+      // Update stage alert style based on progress
+      const stageAlert = document.getElementById('exploit-stage-alert');
+      if (stageAlert) {
+        // Remove existing alert classes
+        stageAlert.classList.remove('alert-dark', 'alert-warning', 'alert-info', 'alert-success');
+        
+        // Apply appropriate class based on completion
+        if (data.completion === '100%') {
+          stageAlert.classList.add('alert-success');
+        } else if (parseInt(data.completion) > 60) {
+          stageAlert.classList.add('alert-info');
+        } else if (parseInt(data.completion) > 20) {
+          stageAlert.classList.add('alert-warning');
+        } else {
+          stageAlert.classList.add('alert-dark');
+        }
+      }
+      
       // Dynamically update the progress bar color based on completion
       if (data.completion === '100%') {
         exploitProgress.classList.remove('bg-danger', 'bg-warning', 'bg-info');
@@ -763,4 +803,305 @@ async function checkExploitProgress() {
 // Add event listener for the check progress button
 if (btnCheckProgress) {
   btnCheckProgress.addEventListener('click', checkExploitProgress);
+}
+
+// Exploit Status Page Elements
+const refreshExploitsBtn = document.getElementById('refresh-exploits');
+const overallProgress = document.getElementById('overall-progress');
+const overallCompletion = document.getElementById('overall-completion');
+const currentStageDesc = document.getElementById('current-stage-desc');
+
+// Exploit status indicators
+const exploitStatusMap = {
+  'sql': {
+    statusIcon: document.getElementById('sql-status-icon'),
+    status: document.getElementById('sql-status'),
+    details: document.getElementById('sql-details'),
+    hint: document.getElementById('sql-hint')
+  },
+  'auth': {
+    statusIcon: document.getElementById('auth-status-icon'),
+    status: document.getElementById('auth-status'),
+    details: document.getElementById('auth-details'),
+    hint: document.getElementById('auth-hint')
+  },
+  'idor': {
+    statusIcon: document.getElementById('idor-status-icon'),
+    status: document.getElementById('idor-status'),
+    details: document.getElementById('idor-details'),
+    hint: document.getElementById('idor-hint')
+  },
+  'upload': {
+    statusIcon: document.getElementById('upload-status-icon'),
+    status: document.getElementById('upload-status'),
+    details: document.getElementById('upload-details'),
+    hint: document.getElementById('upload-hint')
+  },
+  'command': {
+    statusIcon: document.getElementById('command-status-icon'),
+    status: document.getElementById('command-status'),
+    details: document.getElementById('command-details'),
+    hint: document.getElementById('command-hint')
+  }
+};
+
+// Event listener for refreshing exploit status
+if (refreshExploitsBtn) {
+  refreshExploitsBtn.addEventListener('click', updateDetailedExploitStatus);
+}
+
+// Add nav-exploits event listener to update exploit status when clicked
+if (navExploits) {
+  navExploits.addEventListener('click', () => {
+    showSection(exploitsSection);
+    updateDetailedExploitStatus();
+  });
+}
+
+// Function to update the detailed exploit status page
+async function updateDetailedExploitStatus() {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  
+  try {
+    // Get the exploit status data
+    const response = await fetch(`${API_URL}/exploit-status`, {
+      headers: {
+        'Authorization': token
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Update overall progress indicators
+      overallProgress.style.width = data.completion;
+      overallCompletion.textContent = data.completion;
+      currentStageDesc.textContent = data.status;
+      
+      // Update each exploit status based on the current stage
+      updateExploitCardStatuses(data.current_stage);
+      
+      // Update the discovered secrets section
+      updateDiscoveredSecrets(data);
+    }
+  } catch (error) {
+    console.error('Error updating exploit status:', error);
+  }
+}
+
+// Function to update the status of each exploit card based on current stage
+function updateExploitCardStatuses(currentStage) {
+  // Reset all cards to their initial state
+  resetExploitCards();
+  
+  // Update card statuses based on current stage
+  switch(currentStage) {
+    case 'found_chain_key':
+      updateExploitCard('sql', 'success', 'Exploited Successfully', 
+        'You have discovered the chain key through SQL injection.', 
+        'Now use this key with the x-chain-key header in login');
+      break;
+      
+    case 'idor_success':
+      updateExploitCard('sql', 'success', 'Exploited Successfully', 
+        'You have discovered the chain key through SQL injection.', 
+        'Now use this key with the x-chain-key header in login');
+      updateExploitCard('auth', 'success', 'Exploited Successfully', 
+        'You have successfully bypassed authentication.', 
+        'Now try accessing other user profiles');
+      updateExploitCard('idor', 'success', 'Exploited Successfully', 
+        'You have successfully accessed other user profiles.', 
+        'Look for file upload secrets');
+      break;
+      
+    case 'upload_success':
+      updateExploitCard('sql', 'success', 'Exploited Successfully', 
+        'You have discovered the chain key through SQL injection.', 
+        'Now use this key with the x-chain-key header in login');
+      updateExploitCard('auth', 'success', 'Exploited Successfully', 
+        'You have successfully bypassed authentication.', 
+        'Now try accessing other user profiles');
+      updateExploitCard('idor', 'success', 'Exploited Successfully', 
+        'You have successfully accessed other user profiles.', 
+        'Look for file upload secrets');
+      updateExploitCard('upload', 'success', 'Exploited Successfully', 
+        'You have successfully uploaded to the executable directory.', 
+        'Now look for command injection token');
+      break;
+      
+    case 'command_ready':
+      updateExploitCard('sql', 'success', 'Exploited Successfully', 
+        'You have discovered the chain key through SQL injection.', 
+        'Now use this key with the x-chain-key header in login');
+      updateExploitCard('auth', 'success', 'Exploited Successfully', 
+        'You have successfully bypassed authentication.', 
+        'Now try accessing other user profiles');
+      updateExploitCard('idor', 'success', 'Exploited Successfully', 
+        'You have successfully accessed other user profiles.', 
+        'Look for file upload secrets');
+      updateExploitCard('upload', 'success', 'Exploited Successfully', 
+        'You have successfully uploaded to the executable directory.', 
+        'Now look for command injection token');
+      updateExploitCard('command', 'warning', 'Ready to Exploit', 
+        'You have all prerequisites for command injection.', 
+        'Use x-exploit-token with the admin report endpoint');
+      break;
+      
+    case 'command_success':
+      updateExploitCard('sql', 'success', 'Exploited Successfully', 
+        'You have discovered the chain key through SQL injection.', 
+        'Now use this key with the x-chain-key header in login');
+      updateExploitCard('auth', 'success', 'Exploited Successfully', 
+        'You have successfully bypassed authentication.', 
+        'Now try accessing other user profiles');
+      updateExploitCard('idor', 'success', 'Exploited Successfully', 
+        'You have successfully accessed other user profiles.', 
+        'Look for file upload secrets');
+      updateExploitCard('upload', 'success', 'Exploited Successfully', 
+        'You have successfully uploaded to the executable directory.', 
+        'Now look for command injection token');
+      updateExploitCard('command', 'success', 'Exploited Successfully', 
+        'You have successfully executed commands on the server.', 
+        'Congratulations! You have completed the full exploit chain.');
+      break;
+      
+    default:
+      // Not started case - all cards remain in their default state
+      break;
+  }
+}
+
+// Function to reset all exploit cards to their initial state
+function resetExploitCards() {
+  Object.keys(exploitStatusMap).forEach(key => {
+    const card = exploitStatusMap[key];
+    if (card.statusIcon) {
+      card.statusIcon.innerHTML = '<i class="bi bi-x-circle text-danger fs-1"></i>';
+    }
+    if (card.status) {
+      card.status.textContent = 'Not Exploited';
+    }
+    if (card.details) {
+      let defaultMessage = 'Not yet discovered or exploited.';
+      
+      switch(key) {
+        case 'sql':
+          defaultMessage = 'Try exploring the search functionality with SQL injection to find hidden secrets.';
+          break;
+        case 'auth':
+          defaultMessage = 'Requires discovering the chain key through SQL injection first.';
+          break;
+        case 'idor':
+          defaultMessage = 'Need to find the right access token to view other user profiles.';
+          break;
+        case 'upload':
+          defaultMessage = 'Need to discover the executable directory first.';
+          break;
+        case 'command':
+          defaultMessage = 'Requires completing previous steps in the chain.';
+          break;
+      }
+      
+      card.details.textContent = defaultMessage;
+    }
+  });
+}
+
+// Function to update a specific exploit card
+function updateExploitCard(cardKey, status, statusText, details, hint) {
+  const card = exploitStatusMap[cardKey];
+  if (!card) return;
+  
+  if (card.statusIcon) {
+    let iconHtml = '<i class="bi bi-x-circle text-danger fs-1"></i>';
+    
+    if (status === 'success') {
+      iconHtml = '<i class="bi bi-check-circle-fill text-success fs-1"></i>';
+    } else if (status === 'warning') {
+      iconHtml = '<i class="bi bi-exclamation-circle-fill text-warning fs-1"></i>';
+    } else if (status === 'info') {
+      iconHtml = '<i class="bi bi-info-circle-fill text-info fs-1"></i>';
+    }
+    
+    card.statusIcon.innerHTML = iconHtml;
+  }
+  
+  if (card.status) {
+    card.status.textContent = statusText;
+  }
+  
+  if (card.details) {
+    card.details.textContent = details;
+  }
+  
+  if (card.hint) {
+    card.hint.textContent = hint;
+  }
+}
+
+// Function to update the discovered secrets section
+function updateDiscoveredSecrets(data) {
+  const secretsList = document.getElementById('secrets-list');
+  const secretsItems = document.getElementById('secrets-items');
+  const noSecretsAlert = secretsList.querySelector('.alert-warning');
+  
+  if (!data.discoveredSecrets || Object.keys(data.discoveredSecrets).length === 0) {
+    // No secrets discovered yet
+    if (noSecretsAlert) noSecretsAlert.style.display = 'block';
+    if (secretsItems) secretsItems.style.display = 'none';
+    return;
+  }
+  
+  // Hide the "no secrets" alert and show the list
+  if (noSecretsAlert) noSecretsAlert.style.display = 'none';
+  if (secretsItems) {
+    secretsItems.style.display = 'block';
+    secretsItems.innerHTML = '';
+    
+    // Add each discovered secret to the list
+    try {
+      const secrets = data.discoveredSecrets || {};
+      
+      Object.entries(secrets).forEach(([key, value]) => {
+        const listItem = document.createElement('li');
+        listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+        
+        let icon = 'key';
+        let secretLabel = key;
+        
+        switch(key) {
+          case 'chain_key':
+            icon = 'key-fill';
+            secretLabel = 'SQL Injection Chain Key';
+            break;
+          case 'idor_success':
+            icon = 'person-badge-fill';
+            secretLabel = 'IDOR Access Token';
+            break;
+          case 'upload_success':
+            icon = 'upload';
+            secretLabel = 'File Upload Path';
+            break;
+          case 'command_injection':
+            icon = 'terminal-fill';
+            secretLabel = 'Command Injection Token';
+            break;
+        }
+        
+        listItem.innerHTML = `
+          <div>
+            <i class="bi bi-${icon} me-2"></i>
+            <strong>${secretLabel}</strong>
+            <div class="text-muted"><small>${typeof value === 'string' ? value : JSON.stringify(value)}</small></div>
+          </div>
+          <span class="badge bg-success rounded-pill">Discovered</span>
+        `;
+        
+        secretsItems.appendChild(listItem);
+      });
+    } catch (e) {
+      console.error('Error parsing discovered secrets:', e);
+    }
+  }
 } 

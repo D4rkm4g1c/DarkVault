@@ -5,7 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DarkVault - Banking</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
   <link rel="stylesheet" href="styles.css">
+  <style>
+    .card {
+      transition: all 0.3s ease;
+      border: none;
+      border-radius: 8px;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    .card-header {
+      border-radius: 8px 8px 0 0 !important;
+    }
+    .rounded-circle {
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .progress {
+      border-radius: 10px;
+      overflow: hidden;
+      background-color: #f0f0f0;
+    }
+    .progress-bar {
+      border-radius: 10px;
+    }
+    .card-shadow {
+      box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    }
+  </style>
 </head>
 <body>
   <!-- Vulnerable to XSS via URL parameters
@@ -17,22 +46,25 @@
   <div class="container">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
       <div class="container-fluid">
-        <a class="navbar-brand" href="#">DarkVault</a>
+        <a class="navbar-brand" href="#">
+          <i class="bi bi-bank me-2"></i>DarkVault
+        </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
           <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
           <ul class="navbar-nav">
-            <li class="nav-item"><a class="nav-link" href="#" id="nav-home">Home</a></li>
-            <li class="nav-item"><a class="nav-link" href="#" id="nav-transfer">Transfer</a></li>
-            <li class="nav-item"><a class="nav-link" href="#" id="nav-transactions">Transactions</a></li>
-            <li class="nav-item"><a class="nav-link" href="#" id="nav-profile">Profile</a></li>
-            <li class="nav-item" id="admin-section" style="display:none"><a class="nav-link" href="#" id="nav-admin">Admin</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-home"><i class="bi bi-house-door me-1"></i> Home</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-transfer"><i class="bi bi-arrow-left-right me-1"></i> Transfer</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-transactions"><i class="bi bi-clock-history me-1"></i> Transactions</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-profile"><i class="bi bi-person me-1"></i> Profile</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" id="nav-exploits"><i class="bi bi-bug me-1"></i> Exploits</a></li>
+            <li class="nav-item" id="admin-section" style="display:none"><a class="nav-link" href="#" id="nav-admin"><i class="bi bi-shield-lock me-1"></i> Admin</a></li>
           </ul>
         </div>
         <div class="d-flex">
-          <span class="navbar-text me-3" id="user-balance"></span>
-          <button class="btn btn-outline-light" id="btn-logout" style="display:none">Logout</button>
+          <span class="navbar-text me-3" id="user-balance"><i class="bi bi-wallet2 me-1"></i> $0.00</span>
+          <button class="btn btn-outline-light" id="btn-logout" style="display:none"><i class="bi bi-box-arrow-right me-1"></i> Logout</button>
         </div>
       </div>
     </nav>
@@ -97,26 +129,81 @@
       <div class="row mb-4">
         <div class="col-md-6">
           <div class="card shadow">
+            <div class="card-header bg-dark text-white">
+              <h5 class="mb-0">Account Overview</h5>
+            </div>
             <div class="card-body">
-              <h4>Welcome, <span id="summary-username">User</span></h4>
-              <p>Role: <span id="summary-role">user</span></p>
-              <p>Balance: $<span id="summary-balance">0.00</span></p>
+              <div class="d-flex align-items-center mb-3">
+                <div class="bg-dark text-white rounded-circle p-3 me-3" style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                  <span id="user-initial"></span>
+                </div>
+                <div>
+                  <h4 class="mb-0">Welcome, <span id="summary-username">User</span></h4>
+                  <span class="badge bg-dark" id="summary-role-badge">user</span>
+                </div>
+              </div>
+              <hr>
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <small class="text-muted d-block">Role</small>
+                    <strong class="fs-5" id="summary-role">user</strong>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <small class="text-muted d-block">User ID</small>
+                    <strong class="fs-5" id="summary-id">0</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-light p-3 rounded">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <small class="text-muted d-block">Available Balance</small>
+                    <h3 class="mb-0 text-success">$<span id="summary-balance">0.00</span></h3>
+                  </div>
+                  <div>
+                    <button class="btn btn-sm btn-primary" id="quick-balance-transfer">Transfer</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
         <div class="col-md-6">
           <!-- New Exploit Chain Status Card -->
           <div class="card shadow">
-            <div class="card-header bg-dark text-white">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
               <h5 class="mb-0">Exploit Chain Status</h5>
+              <button id="btn-check-progress" class="btn btn-sm btn-outline-light">Refresh</button>
             </div>
             <div class="card-body">
-              <div class="progress mb-3">
-                <div id="exploit-progress" class="progress-bar bg-danger" role="progressbar" style="width: 0%"></div>
+              <div class="mb-4">
+                <div class="d-flex justify-content-between mb-1">
+                  <span>Progress</span>
+                  <span id="completion-percentage">0%</span>
+                </div>
+                <div class="progress" style="height: 10px;">
+                  <div id="exploit-progress" class="progress-bar bg-danger" role="progressbar" style="width: 0%"></div>
+                </div>
               </div>
-              <p><strong>Current Stage:</strong> <span id="exploit-stage">Not started</span></p>
-              <p><strong>Hint:</strong> <span id="exploit-hint">Start exploring vulnerabilities</span></p>
-              <button id="btn-check-progress" class="btn btn-sm btn-dark">Check Progress</button>
+              
+              <div class="mb-3">
+                <h6 class="text-uppercase text-muted"><small>Current Stage</small></h6>
+                <div class="alert alert-dark" id="exploit-stage-alert">
+                  <i class="bi bi-info-circle-fill me-2"></i>
+                  <span id="exploit-stage">Not started</span>
+                </div>
+              </div>
+              
+              <div>
+                <h6 class="text-uppercase text-muted"><small>Hint</small></h6>
+                <div class="alert alert-light border">
+                  <i class="bi bi-lightbulb-fill me-2 text-warning"></i>
+                  <span id="exploit-hint">Start exploring vulnerabilities</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -124,25 +211,52 @@
 
       <!-- Home Section -->
       <div id="home-section" class="app-page">
-        <h2>Welcome to DarkVault</h2>
+        <h2 class="mb-4"><i class="bi bi-house-door"></i> Welcome to DarkVault</h2>
         <div class="row mt-4">
           <div class="col-md-6">
-            <div class="card mb-4">
-              <div class="card-header">Account Summary</div>
+            <div class="card mb-4 card-shadow">
+              <div class="card-header bg-dark text-white">
+                <i class="bi bi-person-badge"></i> Account Summary
+              </div>
               <div class="card-body">
-                <p><strong>Username:</strong> <span id="summary-username"></span></p>
-                <p><strong>Balance:</strong> $<span id="summary-balance"></span></p>
-                <p><strong>Account Type:</strong> <span id="summary-role"></span></p>
+                <div class="d-flex align-items-center mb-3">
+                  <div class="bg-dark text-white rounded-circle p-2 me-3" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                    <i class="bi bi-person"></i>
+                  </div>
+                  <p class="mb-0"><strong>Username:</strong> <span id="summary-username"></span></p>
+                </div>
+                
+                <div class="d-flex align-items-center mb-3">
+                  <div class="bg-dark text-white rounded-circle p-2 me-3" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                    <i class="bi bi-cash-coin"></i>
+                  </div>
+                  <p class="mb-0"><strong>Balance:</strong> $<span id="summary-balance"></span></p>
+                </div>
+                
+                <div class="d-flex align-items-center">
+                  <div class="bg-dark text-white rounded-circle p-2 me-3" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                    <i class="bi bi-shield"></i>
+                  </div>
+                  <p class="mb-0"><strong>Account Type:</strong> <span id="summary-role"></span></p>
+                </div>
               </div>
             </div>
           </div>
           <div class="col-md-6">
-            <div class="card">
-              <div class="card-header">Quick Actions</div>
+            <div class="card card-shadow">
+              <div class="card-header bg-dark text-white">
+                <i class="bi bi-lightning-charge"></i> Quick Actions
+              </div>
               <div class="card-body">
-                <button class="btn btn-primary mb-2 w-100" id="quick-transfer">New Transfer</button>
-                <button class="btn btn-secondary mb-2 w-100" id="quick-search">Search Users</button>
-                <button class="btn btn-info w-100" id="btn-upload">Upload Statement</button>
+                <button class="btn btn-primary mb-2 w-100" id="quick-transfer">
+                  <i class="bi bi-arrow-left-right me-2"></i> New Transfer
+                </button>
+                <button class="btn btn-secondary mb-2 w-100" id="quick-search">
+                  <i class="bi bi-search me-2"></i> Search Users
+                </button>
+                <button class="btn btn-info w-100 text-white" id="btn-upload">
+                  <i class="bi bi-cloud-upload me-2"></i> Upload Statement
+                </button>
               </div>
             </div>
           </div>
@@ -309,6 +423,191 @@
                 <div id="admin-messages">
                   <!-- Messages will be loaded here -->
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exploits Status Section -->
+      <div id="exploits-section" class="app-page" style="display:none">
+        <h2 class="mb-4"><i class="bi bi-bug"></i> Exploit Chain Status</h2>
+        
+        <div class="row mb-4">
+          <div class="col-12">
+            <div class="card card-shadow">
+              <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Overall Progress</h5>
+                <button id="refresh-exploits" class="btn btn-sm btn-outline-light"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+              </div>
+              <div class="card-body">
+                <div class="mb-4">
+                  <div class="d-flex justify-content-between mb-1">
+                    <span>Chain Completion</span>
+                    <span id="overall-completion">0%</span>
+                  </div>
+                  <div class="progress" style="height: 20px;">
+                    <div id="overall-progress" class="progress-bar bg-danger" role="progressbar" style="width: 0%"></div>
+                  </div>
+                </div>
+                
+                <div class="alert alert-primary">
+                  <i class="bi bi-info-circle me-2"></i>
+                  <span id="current-stage-desc">You have not started the exploit chain yet.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="row">
+          <div class="col-md-6 mb-4">
+            <div class="card card-shadow h-100">
+              <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-database"></i> SQL Injection</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                  <div id="sql-status-icon" class="me-3">
+                    <i class="bi bi-x-circle text-danger fs-1"></i>
+                  </div>
+                  <div>
+                    <h6 id="sql-status">Not Discovered</h6>
+                    <p id="sql-details" class="mb-0 text-muted">Try exploring the search functionality with SQL injection to find hidden secrets.</p>
+                  </div>
+                </div>
+                <div class="alert alert-light border mt-3">
+                  <strong><i class="bi bi-lightbulb"></i> Tip:</strong>
+                  <p class="mb-0">The search endpoint is vulnerable to SQL injection. Try using the UNION operator to explore other tables.</p>
+                </div>
+              </div>
+              <div class="card-footer bg-light">
+                <small class="text-muted">Hint: <span id="sql-hint">Try using <code>" UNION SELECT ...</code> in the search field</span></small>
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-md-6 mb-4">
+            <div class="card card-shadow h-100">
+              <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-key"></i> Authentication Bypass</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                  <div id="auth-status-icon" class="me-3">
+                    <i class="bi bi-x-circle text-danger fs-1"></i>
+                  </div>
+                  <div>
+                    <h6 id="auth-status">Not Exploited</h6>
+                    <p id="auth-details" class="mb-0 text-muted">Requires discovering the chain key through SQL injection first.</p>
+                  </div>
+                </div>
+                <div class="alert alert-light border mt-3">
+                  <strong><i class="bi bi-lightbulb"></i> Tip:</strong>
+                  <p class="mb-0">Login endpoint requires a special header with a value found through SQL injection.</p>
+                </div>
+              </div>
+              <div class="card-footer bg-light">
+                <small class="text-muted">Hint: <span id="auth-hint">Use the x-chain-key header with the key found in the secrets table</span></small>
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-md-6 mb-4">
+            <div class="card card-shadow h-100">
+              <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-person-badge"></i> IDOR</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                  <div id="idor-status-icon" class="me-3">
+                    <i class="bi bi-x-circle text-danger fs-1"></i>
+                  </div>
+                  <div>
+                    <h6 id="idor-status">Not Exploited</h6>
+                    <p id="idor-details" class="mb-0 text-muted">Need to find the right access token to view other user profiles.</p>
+                  </div>
+                </div>
+                <div class="alert alert-light border mt-3">
+                  <strong><i class="bi bi-lightbulb"></i> Tip:</strong>
+                  <p class="mb-0">Access to user profiles requires either finding the SQL injection first or using a special header.</p>
+                </div>
+              </div>
+              <div class="card-footer bg-light">
+                <small class="text-muted">Hint: <span id="idor-hint">Try using the x-profile-access header</span></small>
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-md-6 mb-4">
+            <div class="card card-shadow h-100">
+              <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-upload"></i> File Upload</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                  <div id="upload-status-icon" class="me-3">
+                    <i class="bi bi-x-circle text-danger fs-1"></i>
+                  </div>
+                  <div>
+                    <h6 id="upload-status">Not Exploited</h6>
+                    <p id="upload-details" class="mb-0 text-muted">Need to discover the executable directory first.</p>
+                  </div>
+                </div>
+                <div class="alert alert-light border mt-3">
+                  <strong><i class="bi bi-lightbulb"></i> Tip:</strong>
+                  <p class="mb-0">The regular upload directory has restrictions, but there's a hidden executable directory.</p>
+                </div>
+              </div>
+              <div class="card-footer bg-light">
+                <small class="text-muted">Hint: <span id="upload-hint">Use x-upload-path header and xMode query parameter</span></small>
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-md-6 mb-4">
+            <div class="card card-shadow h-100">
+              <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-terminal"></i> Command Injection</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                  <div id="command-status-icon" class="me-3">
+                    <i class="bi bi-x-circle text-danger fs-1"></i>
+                  </div>
+                  <div>
+                    <h6 id="command-status">Not Exploited</h6>
+                    <p id="command-details" class="mb-0 text-muted">Requires completing previous steps in the chain.</p>
+                  </div>
+                </div>
+                <div class="alert alert-light border mt-3">
+                  <strong><i class="bi bi-lightbulb"></i> Tip:</strong>
+                  <p class="mb-0">Command injection requires a special token and completing the file upload step.</p>
+                </div>
+              </div>
+              <div class="card-footer bg-light">
+                <small class="text-muted">Hint: <span id="command-hint">Use x-exploit-token header with the admin report endpoint</span></small>
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-md-6 mb-4">
+            <div class="card card-shadow h-100">
+              <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="bi bi-calendar-check"></i> Discovered Secrets</h5>
+              </div>
+              <div class="card-body" id="secrets-list">
+                <div class="alert alert-warning">
+                  <i class="bi bi-exclamation-triangle me-2"></i>
+                  No secrets discovered yet. Complete exploit steps to reveal secrets.
+                </div>
+                
+                <ul class="list-group" id="secrets-items" style="display:none">
+                  <!-- Secret items will be added here dynamically -->
+                </ul>
+              </div>
+              <div class="card-footer bg-light">
+                <small class="text-muted">These secrets are required to progress through the exploit chain</small>
               </div>
             </div>
           </div>

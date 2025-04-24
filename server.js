@@ -1188,7 +1188,9 @@ app.get('/api/exploit-status', verifyToken, (req, res) => {
       'IDOR to access other profiles',
       'File upload to executable directory',
       'Command injection with proper token'
-    ]
+    ],
+    // Include discovered secrets for detailed exploit status page
+    discoveredSecrets: req.user.discoveredSecrets || {}
   });
 });
 
