@@ -18,4 +18,3 @@ kill $SERVER_PID
 echo "Database reset complete. Default users have been recreated."
 echo "- Admin: username 'admin', password 'admin123'"
 echo "- User: username 'alice', password 'password123'"
-echo "- User: username 'bob', password 'bobpassword'"
