@@ -200,8 +200,13 @@ app.post('/api/register', (req, res) => {
   // Log registration attempt
   console.log(`Registration attempt: username=${username}, email=${email}`);
   
-  // No validation on inputs
-  const query = `INSERT INTO users (username, password, email) VALUES ('${username}', '${password}', '${email}')`;
+  // Very basic escaping - still vulnerable to SQL injection but handles simple quotes
+  const escapedUsername = username.replace(/'/g, "''");
+  const escapedPassword = password.replace(/'/g, "''");
+  const escapedEmail = email.replace(/'/g, "''");
+  
+  // No validation on inputs - deliberately vulnerable to SQL injection
+  const query = `INSERT INTO users (username, password, email) VALUES ('${escapedUsername}', '${escapedPassword}', '${escapedEmail}')`;
   
   db.run(query, function(err) {
     if (err) {
