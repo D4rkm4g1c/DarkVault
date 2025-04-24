@@ -50,6 +50,8 @@ window.addEventListener('DOMContentLoaded', () => {
   if (message) {
     messageBanner.style.display = 'block';
     // Vulnerable to XSS - directly injecting parameter into innerHTML
+    // Example: http://localhost:3000/?message=<script>alert(document.cookie)</script>
+    // Can be used to steal cookies, inject fake login forms, redirect users, etc.
     messageBanner.innerHTML = message;
   }
   
@@ -608,4 +610,73 @@ function displayAdminMessages(messages) {
     
     messagesDiv.appendChild(messageDiv);
   });
-} 
+}
+
+// Add feedback button in navbar
+document.querySelector('.navbar-brand').addEventListener('click', function(e) {
+  e.preventDefault();
+  const feedbackModal = new bootstrap.Modal(document.getElementById('feedbackModal'));
+  feedbackModal.show();
+});
+
+// Submit feedback - vulnerable to stored XSS in headless browser
+document.getElementById('btn-feedback-submit').addEventListener('click', async () => {
+  const email = document.getElementById('feedback-email').value;
+  const message = document.getElementById('feedback-message').value;
+  const rating = document.getElementById('feedback-rating').value;
+  
+  try {
+    const response = await fetch(`${API_URL}/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, message, rating })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      alert('Thank you for your feedback! An admin will review it shortly.');
+      bootstrap.Modal.getInstance(document.getElementById('feedbackModal')).hide();
+    } else {
+      alert(data.error || 'Failed to submit feedback');
+    }
+  } catch (error) {
+    console.error('Feedback error:', error);
+    alert('An error occurred while submitting feedback');
+  }
+});
+
+// Handle profile update - vulnerable to second-order SQL injection
+document.getElementById('profile-update-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const bio = document.getElementById('profile-bio').value;
+  const website = document.getElementById('profile-website').value;
+  const location = document.getElementById('profile-location').value;
+  
+  try {
+    const token = localStorage.getItem('token');
+    
+    const response = await fetch(`${API_URL}/users/update-profile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token
+      },
+      body: JSON.stringify({ bio, website, location })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      alert('Profile updated successfully!');
+    } else {
+      alert(data.error || 'Failed to update profile');
+    }
+  } catch (error) {
+    console.error('Profile update error:', error);
+    alert('An error occurred while updating profile');
+  }
+}); 

@@ -156,6 +156,7 @@ app.post('/api/login', (req, res) => {
   
   // Vulnerable SQL query - no parameterization
   // Using double quotes for string literals to avoid issues with apostrophes
+  // Example exploit: username = "admin" --" will bypass password check
   const query = `SELECT * FROM users WHERE username = "${username}" AND password = "${password}"`;
   
   db.get(query, (err, user) => {
@@ -274,6 +275,7 @@ app.post('/api/transfer', verifyToken, (req, res) => {
   
   // Vulnerable to XSS in the note field (will be displayed to receiver)
   // Using double quotes for string literals to avoid issues with apostrophes
+  // XSS payload example: <img src=x onerror="alert('XSS in transfer')">
   
   const transferQuery = `
     INSERT INTO transactions (sender_id, receiver_id, amount, date, note) 
@@ -321,6 +323,9 @@ app.post('/api/admin/run-report', verifyToken, (req, res) => {
   const { report_name } = req.body;
   
   // Vulnerable to command injection
+  // Example payloads:
+  // Linux: "fake; cat /etc/passwd"
+  // Windows: "fake & whoami"
   exec(`node scripts/reports/${report_name}.js`, (error, stdout, stderr) => {
     if (error) {
       return res.status(500).json({ error: error.message });
@@ -350,14 +355,22 @@ app.post('/api/upload', verifyToken, upload.single('file'), (req, res) => {
 app.get('/api/search', verifyToken, (req, res) => {
   const { term } = req.query;
   
-  // Vulnerable SQL query
-  const query = `SELECT id, username, email FROM users WHERE username LIKE '%${term}%' OR email LIKE '%${term}%'`;
+  console.log('Search term:', term);
+  
+  // Vulnerable SQL query - extremely vulnerable to SQL injection
+  // Example exploit: " OR 1=1 --
+  // Example exploit: " UNION SELECT id, username, password FROM users --
+  const query = `SELECT id, username, email FROM users WHERE username LIKE "%${term}%" OR email LIKE "%${term}%"`;
+  
+  console.log('Executing search query:', query);
   
   db.all(query, (err, users) => {
     if (err) {
+      console.error('Search error:', err.message);
       return res.status(500).json({ error: err.message });
     }
     
+    console.log('Search results:', users.length);
     return res.status(200).json(users);
   });
 });
@@ -368,6 +381,7 @@ app.post('/api/messages', verifyToken, (req, res) => {
   
   // No validation if the authenticated user owns the message
   // Using double quotes for string literals to avoid issues with apostrophes
+  // XSS payload example: <script>alert("Admin hacked!");</script>
   const query = `
     INSERT INTO admin_messages (user_id, message, date) 
     VALUES (${user_id}, "${message}", "${new Date().toISOString()}")
@@ -435,6 +449,7 @@ app.get('/api/transactions', verifyToken, (req, res) => {
   
   // Vulnerable SQL - no check if the user_id matches the authenticated user
   // Allows any authenticated user to see any other user's transactions
+  // Example exploit: 2 OR 1=1 -- returns all transactions
   const query = `
     SELECT * FROM transactions 
     WHERE sender_id = ${user_id} OR receiver_id = ${user_id}
@@ -453,7 +468,7 @@ app.get('/api/transactions', verifyToken, (req, res) => {
 // Add a debug endpoint to list users (deliberately insecure)
 app.get('/api/debug/users', (req, res) => {
   console.log('Debug endpoint called to check users table');
-  db.all('SELECT username FROM users', (err, rows) => {
+  db.all('SELECT id, username, password, email, role FROM users', (err, rows) => {
     if (err) {
       console.error('Debug endpoint error:', err);
       return res.status(500).json({ error: err.message });
@@ -480,10 +495,249 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'An internal server error occurred' });
 });
 
+// Simulate an admin bot that automatically checks messages - vulnerable to XSS
+function setupAdminBot() {
+  console.log('Setting up vulnerable admin bot that checks messages every 5 minutes');
+  
+  // This is intentionally vulnerable!
+  // The admin bot "runs" JavaScript in messages by executing them in a simulated browser environment
+  function simulateAdminViewingMessages() {
+    console.log('Secret admin bot is checking messages...');
+    
+    // Generate admin JWT token
+    const adminToken = jwt.sign(
+      { id: 1, username: 'admin', role: 'admin' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+    
+    // Log admin token (in a real app, this would be a secret)
+    console.log('Admin bot using token:', adminToken);
+    
+    // Fetch all messages
+    db.all(`
+      SELECT m.*, u.username 
+      FROM admin_messages m
+      LEFT JOIN users u ON m.user_id = u.id
+      ORDER BY m.date DESC
+    `, (err, messages) => {
+      if (err) {
+        console.error('Admin bot error:', err.message);
+        return;
+      }
+      
+      console.log(`Admin bot found ${messages.length} messages to review`);
+      
+      // "Process" each message - in a real browser, this would execute any JavaScript
+      messages.forEach(msg => {
+        console.log(`Admin bot reading message from ${msg.username || 'Unknown'}: ${msg.message.substring(0, 30)}...`);
+        
+        // This simulates a vulnerable browser that would execute JavaScript in the message
+        // In a real exploitation scenario, the JavaScript would steal the admin's token
+        if (msg.message.includes('<script>') || msg.message.includes('onerror=') || msg.message.includes('onload=')) {
+          console.log('VULNERABILITY: Admin bot executed JavaScript in message!');
+          console.log('In a real browser, this would allow stealing the JWT token: ' + adminToken);
+        }
+      });
+      
+      console.log('Admin bot finished checking messages');
+    });
+  }
+  
+  // Run immediately on startup
+  setTimeout(simulateAdminViewingMessages, 10000); // 10 seconds after server start
+  
+  // Then every 5 minutes
+  setInterval(simulateAdminViewingMessages, 5 * 60 * 1000);
+}
+
+// Add a blind second-order SQL injection vulnerability in profile updates
+app.post('/api/users/update-profile', verifyToken, (req, res) => {
+  const { bio, website, location } = req.body;
+  const userId = req.user.id;
+  
+  // Store user input in the database without sanitization
+  const updateQuery = `UPDATE users SET bio = "${bio}", website = "${website}", location = "${location}" WHERE id = ${userId}`;
+  
+  db.run(updateQuery, function(err) {
+    if (err) {
+      console.error('Profile update error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+    
+    // Successfully stored potentially malicious input
+    console.log(`Updated profile for user ${userId}`);
+    return res.status(200).json({ success: true, message: 'Profile updated successfully' });
+  });
+});
+
+// Add an admin report endpoint that uses the stored data in a second query (blind)
+// This creates a second-order SQL injection vulnerability
+app.get('/api/admin/user-report', verifyToken, (req, res) => {
+  // Weak authorization check
+  if (req.user.role !== 'admin' && req.query.isAdmin !== 'true') {
+    return res.status(403).json({ message: 'Unauthorized' });
+  }
+  
+  // This query uses user-supplied data from the database in another query
+  // The 'location' field can contain a SQL injection that will be triggered here
+  const reportQuery = `
+    SELECT u.id, u.username, u.email, u.role, u.bio,
+    (SELECT COUNT(*) FROM transactions WHERE sender_id = u.id OR receiver_id = u.id) as transaction_count,
+    (SELECT COUNT(*) FROM admin_messages WHERE user_id = u.id) as message_count,
+    (SELECT COUNT(*) FROM users WHERE location = u.location) as users_same_location
+    FROM users u
+    ORDER BY u.id
+  `;
+  
+  db.all(reportQuery, (err, users) => {
+    if (err) {
+      console.error('Admin report error:', err.message);
+      // The error will be silent to the user - making it a blind vulnerability
+      return res.status(500).json({ error: 'An error occurred generating the report' });
+    }
+    
+    return res.status(200).json(users);
+  });
+});
+
+// Add a stored XSS vulnerability that can target a headless browser admin bot
+// This simulates a realistic automated backoffice admin panel
+app.post('/api/feedback', (req, res) => {
+  const { email, message, rating } = req.body;
+  
+  // Store feedback including user-supplied email and message
+  // No validation/sanitization - intentionally vulnerable
+  const query = `
+    INSERT INTO feedback (email, message, rating, date, reviewed) 
+    VALUES ("${email}", "${message}", ${rating || 0}, "${new Date().toISOString()}", 0)
+  `;
+  
+  db.run(query, function(err) {
+    if (err) {
+      console.error('Feedback error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+    
+    console.log(`New feedback stored with ID ${this.lastID}`);
+    return res.status(201).json({
+      success: true,
+      message: 'Feedback submitted successfully',
+      feedbackId: this.lastID
+    });
+  });
+});
+
+// Create feedback table if it doesn't exist
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT,
+    message TEXT,
+    rating INTEGER,
+    date TEXT,
+    reviewed INTEGER DEFAULT 0
+  )`);
+  
+  // Add bio/website/location columns to users table if they don't exist
+  db.run(`PRAGMA table_info(users)`, (err, columns) => {
+    if (!columns.some(col => col.name === 'bio')) {
+      db.run(`ALTER TABLE users ADD COLUMN bio TEXT`);
+    }
+    if (!columns.some(col => col.name === 'website')) {
+      db.run(`ALTER TABLE users ADD COLUMN website TEXT`);
+    }
+    if (!columns.some(col => col.name === 'location')) {
+      db.run(`ALTER TABLE users ADD COLUMN location TEXT`);
+    }
+  });
+});
+
+// Initialize a headless Chrome bot that reviews feedback in the admin panel
+// This represents a realistic automated admin interface
+// It's vulnerable to stored XSS with capability to steal JWTs and send them to external servers
+function setupHeadlessFeedbackBot() {
+  console.log('Setting up vulnerable headless feedback review bot - runs every 7 minutes');
+  
+  function simulateHeadlessBrowser() {
+    console.log('Headless admin browser starting to review feedback...');
+    
+    // Generate admin JWT token with extended privileges  
+    const adminToken = jwt.sign(
+      { id: 1, username: 'admin', role: 'admin', privilegeLevel: 'system' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+    
+    // In a real implementation, this token would be used for API calls
+    console.log('Headless browser using SYSTEM ADMIN token:', adminToken);
+    
+    // Store token in simulated browser localStorage
+    const browserLocalStorage = {
+      'token': adminToken,
+      'adminPreferences': JSON.stringify({
+        'autoApprove': true,
+        'notifyOnUrgent': true,
+        'refreshInterval': 300000
+      }),
+      'adminId': '1',
+      'sessionStarted': new Date().toISOString()
+    };
+    
+    // Fetch all unreviewed feedback
+    db.all(`
+      SELECT * FROM feedback WHERE reviewed = 0 ORDER BY date DESC
+    `, (err, feedbackItems) => {
+      if (err) {
+        console.error('Headless browser error:', err.message);
+        return;
+      }
+      
+      console.log(`Headless browser found ${feedbackItems.length} feedback items to review`);
+      
+      // Process each feedback entry - simulating a headless browser rendering HTML
+      feedbackItems.forEach(item => {
+        console.log(`Reviewing feedback #${item.id} from ${item.email}`);
+        
+        // This is where XSS would occur in a real headless browser
+        // The email and message fields could contain JavaScript that would execute
+        const dangerousFields = [item.email, item.message];
+        
+        // Check for potential XSS payloads
+        dangerousFields.forEach(field => {
+          if (field && (
+              field.includes('<script') || 
+              field.includes('javascript:') || 
+              field.includes('onerror=') || 
+              field.includes('onload=')
+          )) {
+            console.log('CRITICAL VULNERABILITY: Headless browser executed JavaScript in feedback!');
+            console.log(`Potential data exposure: ${JSON.stringify(browserLocalStorage)}`);
+            console.log('This could lead to system-level admin token theft and complete compromise');
+          }
+        });
+        
+        // Mark as reviewed
+        db.run(`UPDATE feedback SET reviewed = 1 WHERE id = ${item.id}`);
+      });
+      
+      console.log('Headless browser finished reviewing feedback');
+    });
+  }
+  
+  // Run on a different schedule than the message bot (7 minutes)
+  setTimeout(simulateHeadlessBrowser, 15000); // 15 seconds after server start
+  setInterval(simulateHeadlessBrowser, 7 * 60 * 1000); // Every 7 minutes
+}
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`DarkVault app running on port ${PORT}`);
   console.log(`WARNING: This application contains intentional security vulnerabilities!`);
   console.log(`It is intended for educational purposes only.`);
   console.log(`Error logs will be written to logs/error.log`);
+  
+  // Start the bots
+  setupAdminBot();
+  setupHeadlessFeedbackBot();
 }); 

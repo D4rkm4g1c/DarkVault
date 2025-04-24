@@ -8,7 +8,10 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Vulnerable to XSS via URL parameters -->
+  <!-- Vulnerable to XSS via URL parameters
+       Example exploit: /?message=<script>alert('XSS!')</script>
+       Or: /?message=<img src=x onerror="alert('XSS!')">
+  -->
   <div id="message-banner"></div>
 
   <div class="container">
@@ -177,6 +180,29 @@
                 <p><strong>Role:</strong> <span id="profile-role"></span></p>
               </div>
             </div>
+            
+            <!-- Add profile update form - vulnerable to second-order SQL injection -->
+            <div class="card mt-3">
+              <div class="card-header">Update Profile</div>
+              <div class="card-body">
+                <form id="profile-update-form">
+                  <div class="mb-3">
+                    <label for="profile-bio" class="form-label">Bio</label>
+                    <textarea class="form-control" id="profile-bio" rows="2"></textarea>
+                  </div>
+                  <div class="mb-3">
+                    <label for="profile-website" class="form-label">Website</label>
+                    <input type="text" class="form-control" id="profile-website">
+                  </div>
+                  <div class="mb-3">
+                    <label for="profile-location" class="form-label">Location</label>
+                    <input type="text" class="form-control" id="profile-location">
+                    <!-- This field is vulnerable to second-order SQL injection -->
+                  </div>
+                  <button type="submit" class="btn btn-primary">Update Profile</button>
+                </form>
+              </div>
+            </div>
           </div>
           <div class="col-md-6">
             <div class="card">
@@ -259,6 +285,40 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             <button type="button" class="btn btn-primary" id="btn-upload-submit">Upload</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feedback Modal - Vulnerable to Headless Browser XSS -->
+    <div class="modal fade" id="feedbackModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Submit Feedback</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="feedback-form">
+              <div class="mb-3">
+                <label for="feedback-email" class="form-label">Your Email</label>
+                <input type="email" class="form-control" id="feedback-email">
+                <!-- Vulnerable to XSS in headless browser -->
+              </div>
+              <div class="mb-3">
+                <label for="feedback-message" class="form-label">Feedback Message</label>
+                <textarea class="form-control" id="feedback-message" rows="3"></textarea>
+                <!-- Vulnerable to XSS in headless browser -->
+              </div>
+              <div class="mb-3">
+                <label for="feedback-rating" class="form-label">Rating (1-5)</label>
+                <input type="number" class="form-control" id="feedback-rating" min="1" max="5" value="5">
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" id="btn-feedback-submit">Submit Feedback</button>
           </div>
         </div>
       </div>
