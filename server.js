@@ -935,60 +935,98 @@ app.post('/api/register', (req, res) => {
 
 // Middleware for token verification - Keep the JWT vulnerability by design
 const verifyToken = (req, res, next) => {
-  const token = req.headers['authorization'];
+  const bearerHeader = req.headers['authorization'];
+  
+  if (!bearerHeader) {
+    return res.status(401).json({ message: 'Access denied. No token provided.' });
+  }
+  
+  const token = bearerHeader;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
   
   if (!token) {
-    return res.status(401).json({ 
-      message: 'No token provided',
-      hint: 'Authentication required' 
-    });
-  } else {
-    try {
-      // VULNERABLE BY DESIGN: JWT verification still accepts multiple secrets
-      // and doesn't properly validate role claims against the database
-      let decoded;
-      try {
-        decoded = jwt.verify(token, JWT_SECRET);
-      } catch (mainErr) {
-        // If main secret fails, try the weak testing key
-        try {
-          decoded = jwt.verify(token, WEAK_KEY);
-          console.log('WARNING: JWT verified with weak dev key!');
-        } catch (devErr) {
-          throw mainErr;
-        }
-      }
-      
-      // Successfully verified the token
-      req.user = decoded;
-      
-      // Load the user's real data from the database to compare with token claims
-      db.get(`SELECT * FROM users WHERE id = ?`, [decoded.id], (err, user) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-        
-        if (!user) {
-          return res.status(404).json({ message: 'User not found' });
-        }
-        
-        // VULNERABLE BY DESIGN: Does not validate token role against database role
-        // This allows privilege escalation by manipulating the JWT payload
-        req.user.username = user.username;
-        req.user.email = user.email;
-        // req.user.role is not overwritten from DB, allowing token role to be used
-        req.user.balance = user.balance;
-        
-        // Add user's discovered secrets if any
-        loadExploitChainProgress(req, res, next);
-      });
-    } catch (error) {
-      console.error('Token verification error:', error.message);
-      return res.status(401).json({
-        message: 'Invalid token',
-        error: 'Authentication failed'
+    return res.status(401).json({ message: 'Access denied. Invalid token format.' });
+  }
+  
+  try {
+    // Track JWT token information access if this is the JWT info endpoint
+    if (req.path === '/api/get-jwt-info') {
+      updateLeaderboard(systemId, 'anonymous', 'jwt_info_access', {
+        endpoint: req.path,
+        method: req.method
       });
     }
+    
+    // First attempt to decode without verification (to check for tampering)
+    let decodedWithoutVerification;
+    try {
+      decodedWithoutVerification = jwt.decode(token);
+      
+      // Track successful decoding
+      if (decodedWithoutVerification) {
+        updateLeaderboard(systemId, decodedWithoutVerification.username || 'anonymous', 'jwt_decode_success');
+      }
+      
+      // Check for algorithm tampering
+      const tokenParts = token.split('.');
+      if (tokenParts.length === 3) {
+        const header = JSON.parse(atob(tokenParts[0]));
+        if (header.alg === 'none' || header.alg === 'HS256' && decodedWithoutVerification.role === 'admin') {
+          // Track algorithm confusion attempt
+          updateLeaderboard(systemId, decodedWithoutVerification.username || 'anonymous', 'jwt_algorithm_confusion', {
+            algorithm: header.alg,
+            claimedRole: decodedWithoutVerification.role
+          });
+        }
+      }
+    } catch (decodeErr) {
+      console.error('Error decoding token (non-fatal):', decodeErr);
+    }
+    
+    // Try to verify with the main secret
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+      // Continue with the request if verification is successful
+    } catch (err) {
+      // If verification fails with the main secret, try with the weak key
+      try {
+        decoded = jwt.verify(token, WEAK_KEY);
+        console.log('WARNING: JWT verified with weak dev key!');
+        
+        // Track successful use of weak key (potential vulnerability exploitation)
+        updateLeaderboard(systemId, decoded.username || 'anonymous', 'jwt_weak_key_success', {
+          claimedRole: decoded.role
+        });
+      } catch (weakKeyErr) {
+        // If that also fails, reject the request
+        return res.status(401).json({ message: 'Invalid token.' });
+      }
+    }
+    
+    // Check for potential privilege escalation via token manipulation
+    if (decoded.role === 'admin') {
+      db.get('SELECT role FROM users WHERE id = ?', [decoded.id], (err, row) => {
+        if (err) {
+          console.error('Error checking user role:', err);
+        } else if (row && row.role !== 'admin') {
+          // This is a successful privilege escalation through JWT manipulation!
+          console.log(`⚠️ JWT privilege escalation detected: User ${decoded.username} (${decoded.id}) claiming admin role!`);
+          
+          // Track admin forge success
+          updateLeaderboard(systemId, decoded.username, 'jwt_admin_forge', {
+            userId: decoded.id,
+            actualRole: row.role,
+            claimedRole: 'admin'
+          });
+        }
+      });
+    }
+    
+    // Attach user info to request
+    req.user = decoded;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid token.' });
   }
 };
 
@@ -1807,64 +1845,107 @@ app.get('/api/get-jwt-info', (req, res) => {
   }
 });
 
-// Cookie-based SQL injection - adding a vulnerability where SQL injection can be performed via cookies
+// Enhance the Cookie-based SQL injection tracking in the user preferences endpoint
 app.get('/api/user-preferences', verifyToken, (req, res) => {
+  const theme = req.cookies.theme || 'light';
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
   // Get theme from cookie - VULNERABLE TO SQL INJECTION BY DESIGN
-  const theme = req.cookies?.theme || 'default';
-  
-  console.log(`Loading preferences with theme: ${theme}`);
-  
-  // VULNERABLE BY DESIGN: Direct use of cookie value in SQL query
-  // This can be exploited with a cookie like: theme=dark' UNION SELECT password,username,email FROM users--
-  const query = `SELECT * FROM themes WHERE name = '${theme}'`;
-  
-  db.all(query, (err, themes) => {
-    if (err) {
-      // Suppresses the error but logs it - making this blind
-      console.error('Error in theme loading:', err.message);
-      
-      // Check if this might be a SQL injection attempt
-      if (err.message.includes('syntax') && (theme.includes("'") || theme.includes('"') || theme.includes('--'))) {
-        console.log('Potential SQL injection detected in theme cookie');
-        
-        // Record the exploitation if user is authenticated
-        if (req.user && req.user.recordVulnerability) {
-          req.user.recordVulnerability('cookie_sqli', {
-            payload: theme,
-            error: err.message
-          });
-        }
+  try {
+    // DANGEROUS: Direct use of user-controlled cookie value in SQL query
+    const query = `SELECT * FROM themes WHERE name = '${theme}'`;
+    
+    // Check if this might be a SQL injection attempt
+    const sqlInjectionPatterns = [
+      "'--",
+      "' OR ",
+      "' UNION ",
+      "' AND ",
+      "';",
+      "' SELECT ",
+      "' FROM ",
+      "INSERT ",
+      "UPDATE ",
+      "DELETE "
+    ];
+    
+    // Check for SQL injection patterns
+    let sqlInjectionDetected = false;
+    let detectedPattern = '';
+    
+    sqlInjectionPatterns.forEach(pattern => {
+      if (theme.includes(pattern)) {
+        sqlInjectionDetected = true;
+        detectedPattern = pattern;
       }
-      
-      return res.status(200).json({ 
-        theme: 'default',
-        message: 'Error loading theme, using default'
+    });
+    
+    if (sqlInjectionDetected) {
+      console.log('Potential SQL injection detected in theme cookie');
+      updateLeaderboard(systemId, req.user ? req.user.username : 'anonymous', 'cookie_sqli_attempt', {
+        cookie_value: theme,
+        pattern: detectedPattern
       });
     }
     
-    // Check for potential SQL injection based on suspicious result patterns
-    if (themes && themes.length > 0 && themes.some(row => 
-      // Check if we have unexpected columns that might indicate UNION-based injection
-      Object.keys(row).some(key => !['id', 'name', 'description', 'custom_css'].includes(key))
-    )) {
-      console.log('Potential SQLi success detected via result inspection');
+    // Execute the query (vulnerable by design)
+    db.all(query, (err, rows) => {
+      if (err) {
+        console.error('SQL error:', err.message);
+        return res.status(500).json({ error: 'Database error', details: err.message });
+      }
       
-      // Record the exploitation if user is authenticated
-      if (req.user && req.user.recordVulnerability) {
-        req.user.recordVulnerability('cookie_sqli_success', {
-          payload: theme,
-          columns: themes.length > 0 ? Object.keys(themes[0]) : []
+      // Check if this might be a successful SQL injection
+      if (rows.length > 1) {
+        // Multiple rows returned from a query that should only return one row
+        console.log('Potential SQL injection success detected - multiple rows returned from theme query');
+        updateLeaderboard(systemId, req.user ? req.user.username : 'anonymous', 'cookie_sqli_success', {
+          cookie_value: theme,
+          rows_returned: rows.length
         });
       }
-    }
-    
-    // Success response
-    return res.status(200).json({
-      theme: theme,
-      settings: themes,
-      customCss: theme !== 'default' ? themes[0]?.custom_css : ''
+      
+      // Check for potential SQL injection based on suspicious result patterns
+      const sensitiveDataPatterns = [
+        'username', 'password', 'email', 'credit', 'admin', 'secret', 'key'
+      ];
+      
+      // Convert rows to JSON for easier inspection
+      const rowsJson = JSON.stringify(rows);
+      
+      // Check if response might contain sensitive data
+      let sensitiveDataLeakage = false;
+      sensitiveDataPatterns.forEach(pattern => {
+        if (rowsJson.toLowerCase().includes(pattern)) {
+          sensitiveDataLeakage = true;
+          updateLeaderboard(systemId, req.user ? req.user.username : 'anonymous', 'cookie_sqli_data_leak', {
+            cookie_value: theme,
+            pattern_leaked: pattern
+          });
+        }
+      });
+      
+      // Extract the theme data or use default
+      const themeData = rows.length > 0 ? rows[0] : { 
+        name: 'light', 
+        background: '#ffffff', 
+        text: '#000000',
+        primary: '#007bff'
+      };
+      
+      res.json({ 
+        theme: themeData,
+        preferences: {
+          notifications: req.user ? true : false,
+          language: 'en',
+          timezone: 'UTC'
+        }
+      });
     });
-  });
+  } catch (error) {
+    console.error('Theme preferences error:', error);
+    res.status(500).json({ error: 'An error occurred while fetching preferences' });
+  }
 });
 
 // DOM-based XSS vulnerability - PRESERVED BY DESIGN
@@ -1961,18 +2042,76 @@ app.post('/api/record-vulnerability', verifyToken, (req, res) => {
 app.post('/api/update-email', verifyToken, (req, res) => {
   const { email } = req.body;
   const userId = req.user.id;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  // Validate email format
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email is required' });
+  }
+  
+  // CSRF vulnerability detection - Check for missing or suspicious headers
+  const origin = req.headers['origin'];
+  const referer = req.headers['referer'];
+  
+  // Check if request might be a CSRF attempt
+  let csrfSuspected = false;
+  
+  // If the origin or referer is missing or from a different domain
+  if (!origin && !referer) {
+    csrfSuspected = true;
+    console.log(`Potential CSRF detected: Missing origin and referer headers`);
+    updateLeaderboard(systemId, req.user.username, 'csrf_detection', {
+      email: email,
+      missing_headers: true
+    });
+  } 
+  // If origin exists but doesn't match our domain
+  else if (origin && !origin.includes('localhost') && !origin.includes('darkvault')) {
+    csrfSuspected = true;
+    console.log(`Potential CSRF detected: Invalid origin ${origin}`);
+    updateLeaderboard(systemId, req.user.username, 'csrf_detection', {
+      email: email,
+      origin: origin
+    });
+  }
+  // If referer exists but doesn't match our domain 
+  else if (referer && !referer.includes('localhost') && !referer.includes('darkvault')) {
+    csrfSuspected = true;
+    console.log(`Potential CSRF detected: Invalid referer ${referer}`);
+    updateLeaderboard(systemId, req.user.username, 'csrf_detection', {
+      email: email,
+      referer: referer
+    });
+  }
   
   // VULNERABLE BY DESIGN: No CSRF token validation
-  // This can be exploited with a form on an attacker's site
+  // Process the email update even if CSRF is suspected
   db.run(
     'UPDATE users SET email = ? WHERE id = ?',
     [email, userId],
     function(err) {
       if (err) {
-        return res.status(500).json({ error: 'Failed to update email' });
+        console.error('Error updating email:', err);
+        return res.status(500).json({ error: 'Database error' });
       }
       
-      return res.status(200).json({
+      if (csrfSuspected) {
+        // Track successful email change via potential CSRF
+        updateLeaderboard(systemId, req.user.username, 'csrf_email_change', {
+          email: email,
+          origin: origin || 'none',
+          referer: referer || 'none'
+        });
+        
+        // If email is changed to a suspicious domain (likely for account takeover)
+        if (email.includes('evil') || email.includes('hack') || email.includes('attacker')) {
+          updateLeaderboard(systemId, req.user.username, 'csrf_account_takeover', {
+            email: email
+          });
+        }
+      }
+      
+      return res.json({
         success: true,
         message: 'Email updated successfully'
       });
@@ -3006,4 +3145,748 @@ function getNextStage(allStages, completedStages) {
     }
   }
   return null; // All stages completed
-} 
+}
+
+// Add this to the profile update endpoint
+app.post('/api/users/update-profile', verifyToken, (req, res) => {
+  const { bio, website, location } = req.body;
+  const userId = req.user.id;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  // DANGEROUS: Check for potential SQL injection patterns
+  const sqlInjectionPatterns = [
+    "';",
+    "';--",
+    "' OR ",
+    "' UNION ",
+    "' SELECT ",
+    "' UPDATE ",
+    "' INSERT ",
+    "' DELETE "
+  ];
+  
+  // Check for SQL injection patterns in user input
+  let sqlInjectionDetected = false;
+  let detectedPattern = '';
+  
+  [bio, website, location].forEach(field => {
+    if (field) {
+      sqlInjectionPatterns.forEach(pattern => {
+        if (field.includes(pattern)) {
+          sqlInjectionDetected = true;
+          detectedPattern = pattern;
+        }
+      });
+    }
+  });
+  
+  // If SQL injection is detected, track it but still process the request (vulnerable by design)
+  if (sqlInjectionDetected) {
+    console.log(`Potential SQL injection detected in profile update for user ${req.user.username}`);
+    updateLeaderboard(systemId, req.user.username, 'sqli_detection', {
+      field: location ? 'location' : (bio ? 'bio' : 'website'),
+      pattern: detectedPattern
+    });
+    
+    // Check for UPDATE/INSERT statements (potential privilege escalation)
+    if (location && location.toLowerCase().includes("update users set role") || location.toLowerCase().includes("admin")) {
+      updateLeaderboard(systemId, req.user.username, 'sqli_privilege_attempt', {
+        payload: location
+      });
+    }
+  }
+  
+  // VULNERABLE BY DESIGN: Second-order SQL injection happens here
+  // Store the user-provided inputs without proper sanitization
+  db.run(
+    `INSERT INTO profile_updates (user_id, bio, website, location, date) 
+     VALUES (?, ?, ?, ?, datetime('now'))`,
+    [userId, bio, website, location],
+    function(err) {
+      if (err) {
+        console.error('Error updating profile:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (sqlInjectionDetected) {
+        updateLeaderboard(systemId, req.user.username, 'sqli_profile_update', {
+          updateId: this.lastID
+        });
+      }
+      
+      return res.json({
+        success: true,
+        message: 'Profile updated successfully'
+      });
+    }
+  );
+});
+
+// Add tracking to the admin profile updates viewing endpoint
+app.get('/api/admin/profile-updates', verifyToken, (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  // Admin endpoint to view profile updates - executes second-order SQL injection
+  // VULNERABLE BY DESIGN
+  db.all(`SELECT pu.id, pu.user_id, u.username, pu.bio, pu.website, pu.location, pu.date 
+          FROM profile_updates pu 
+          JOIN users u ON pu.user_id = u.id 
+          ORDER BY pu.date DESC`, (err, rows) => {
+    if (err) {
+      console.error('Error fetching profile updates:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    // Track access to the endpoint
+    updateLeaderboard(systemId, req.user.username, 'admin_profile_view');
+    
+    // Process each profile update and check for SQL injection
+    rows.forEach(row => {
+      // This query executes any SQL injection payloads in the profile_updates table
+      db.get(`SELECT '${row.location}' as test_field`, (injErr, injResult) => {
+        // If there's an error, it might be due to SQL injection
+        if (injErr) {
+          console.error(`SQL error when processing user ${row.username}'s location: ${injErr.message}`);
+          
+          // Try to extract user ID from the location field (common in SQL injection attempts)
+          if (row.location && row.location.includes("UPDATE users SET")) {
+            updateLeaderboard(systemId, row.username, 'sqli_admin_execution', {
+              updateId: row.id,
+              error: injErr.message
+            });
+            
+            // Check if the user's role has actually changed
+            db.get('SELECT role FROM users WHERE id = ?', [row.user_id], (roleErr, roleResult) => {
+              if (!roleErr && roleResult && roleResult.role === 'admin') {
+                // The SQL injection has successfully escalated privileges
+                updateLeaderboard(systemId, row.username, 'sqli_privilege_escalation');
+                console.log(`⚠️ User ${row.username} has escalated to admin via SQL injection!`);
+              }
+            });
+          }
+        }
+      });
+    });
+    
+    return res.json({ success: true, updates: rows });
+  });
+});
+
+// Add an endpoint to track DOM-based XSS attempts and successes
+app.post('/api/track-xss', (req, res) => {
+  const { type, payload, location, details } = req.body;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  const username = req.headers['x-user'] || 'anonymous';
+  
+  // Validate input
+  if (!type || !payload) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  // Map front-end event type to leaderboard event
+  let eventType = 'xss_attempt';
+  if (type === 'detection') {
+    eventType = 'xss_detection';
+  } else if (type === 'attempt') {
+    eventType = 'xss_attempt';
+  } else if (type === 'execution') {
+    eventType = 'xss_execution';
+  } else if (type === 'cookie_theft') {
+    eventType = 'xss_cookie_theft';
+  }
+  
+  // Record the event
+  updateLeaderboard(systemId, username, eventType, {
+    payload,
+    location: location || 'unknown',
+    details: details || {}
+  });
+  
+  // Return success to avoid interfering with the XSS
+  res.status(200).json({ success: true });
+});
+
+// Add documentation endpoint - vulnerable to DOM-based XSS
+app.get('/api/documentation', (req, res) => {
+  // Define API documentation with a warning that will be ignored
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DarkVault API Documentation</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { padding: 20px; }
+    pre { background-color: #f0f0f0; padding: 10px; border-radius: 4px; }
+    .warning { background-color: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>DarkVault API Documentation</h1>
+    
+    <div class="warning">
+      <strong>Warning:</strong> This page contains a DOM-based XSS vulnerability for educational purposes.
+    </div>
+    
+    <div id="api-intro">
+      <p>Welcome to the DarkVault API documentation. This page describes the endpoints available in the application.</p>
+    </div>
+    
+    <h2>Endpoints</h2>
+    <div id="endpoints">
+      <h3>Authentication</h3>
+      <ul>
+        <li><code>POST /api/login</code> - Authenticate user and get JWT token</li>
+        <li><code>POST /api/register</code> - Create a new user account</li>
+      </ul>
+      
+      <h3>Users</h3>
+      <ul>
+        <li><code>GET /api/users/:id</code> - Get user information</li>
+        <li><code>POST /api/users/update-profile</code> - Update user profile</li>
+      </ul>
+      
+      <h3>Transactions</h3>
+      <ul>
+        <li><code>POST /api/transfer</code> - Transfer money between accounts</li>
+        <li><code>GET /api/transactions</code> - Get transaction history</li>
+      </ul>
+      
+      <h3>Admin</h3>
+      <ul>
+        <li><code>GET /api/admin/profile-updates</code> - View profile updates (admin only)</li>
+        <li><code>GET /api/admin/export-users</code> - Export user data (admin only)</li>
+        <li><code>POST /api/admin/report</code> - Generate system report (admin only)</li>
+      </ul>
+    </div>
+    
+    <h2>Section Navigation</h2>
+    <div class="mb-3">
+      <p>Jump to section: <input type="text" id="section-input" class="form-control" placeholder="Enter section name"></p>
+      <button id="go-to-section" class="btn btn-primary">Go</button>
+      <div id="section-target"></div>
+    </div>
+    
+    <hr>
+    
+    <h2>Documentation Details</h2>
+    <div id="content-target">
+      <!-- Documentation content will be loaded here -->
+    </div>
+    
+    <!-- DOM-Based XSS Vulnerability -->
+    <script>
+      // VULNERABLE BY DESIGN: This makes the page vulnerable to DOM-based XSS
+      document.addEventListener('DOMContentLoaded', function() {
+        // Track XSS detection with a simple telemetry function
+        function trackXssEvent(type, payload, location) {
+          try {
+            fetch('/api/track-xss', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-user': localStorage.getItem('username') || 'anonymous',
+                'x-system-id': localStorage.getItem('system_id') || ''
+              },
+              body: JSON.stringify({
+                type: type,
+                payload: payload,
+                location: location
+              })
+            }).catch(() => {}); // Suppress errors to avoid interfering with XSS
+          } catch (e) {
+            // Ignore errors
+          }
+        }
+        
+        // Check URL hash for section to display
+        if (window.location.hash) {
+          const hash = window.location.hash.substring(1);
+          
+          // Check for potential XSS payloads
+          if (hash.includes('<') && (hash.includes('script') || hash.includes('img') || hash.includes('on'))) {
+            trackXssEvent('detection', hash, 'url_hash');
+          }
+          
+          // VULNERABLE: Directly insert hash value into innerHTML
+          document.getElementById('section-target').innerHTML = '<div class="p-3 mb-3 bg-light rounded">' + 
+                                                               'Selected section: ' + hash + '</div>';
+                                                               
+          // Attempt to detect if an XSS payload executed
+          setTimeout(() => {
+            const scripts = document.querySelectorAll('script:not([src])');
+            for (const script of scripts) {
+              if (script.innerText.includes('fetch') && script.innerText.includes('cookie')) {
+                trackXssEvent('execution', hash, 'script_tag');
+              }
+            }
+          }, 500);
+        }
+        
+        // Add click handler for navigation
+        document.getElementById('go-to-section').addEventListener('click', function() {
+          const section = document.getElementById('section-input').value;
+          
+          // Check for potential XSS payloads
+          if (section.includes('<') && (section.includes('script') || section.includes('img') || section.includes('on'))) {
+            trackXssEvent('attempt', section, 'section_input');
+          }
+          
+          // VULNERABLE: Directly insert user input into innerHTML
+          document.getElementById('section-target').innerHTML = '<div class="p-3 mb-3 bg-light rounded">' + 
+                                                               'Selected section: ' + section + '</div>';
+                                                               
+          // Update URL hash
+          window.location.hash = section;
+        });
+      });
+    </script>
+  </div>
+</body>
+</html>
+  `;
+  
+  res.status(200).send(html);
+});
+
+// Add a quick-transfer endpoint that's vulnerable to race conditions
+app.post('/api/quick-transfer', verifyToken, (req, res) => {
+  const { to, amount } = req.body;
+  const fromId = req.user.id;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  // Validate input
+  if (!to || !amount) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  if (isNaN(amount) || parseFloat(amount) <= 0) {
+    return res.status(400).json({ error: 'Invalid amount' });
+  }
+  
+  // VULNERABLE BY DESIGN: Track the timestamp of recent transfers for race condition detection
+  const now = Date.now();
+  // Set up global object for tracking rapid transfers if it doesn't exist
+  if (!global.recentTransfers) {
+    global.recentTransfers = {};
+  }
+  
+  // Add this transfer to the user's recent transfers
+  if (!global.recentTransfers[fromId]) {
+    global.recentTransfers[fromId] = [];
+  }
+  
+  // Add the current timestamp to the user's recent transfers
+  global.recentTransfers[fromId].push({
+    timestamp: now,
+    amount: parseFloat(amount),
+    to: to
+  });
+  
+  // Check for potential race condition attempts (multiple transfers in a short window)
+  const recentWindow = 2000; // 2 seconds window
+  const recentCount = global.recentTransfers[fromId].filter(t => 
+    now - t.timestamp < recentWindow
+  ).length;
+  
+  if (recentCount >= 3) {
+    console.log(`Potential race condition attack detected: ${recentCount} transfers in ${recentWindow}ms window`);
+    updateLeaderboard(systemId, req.user.username, 'race_condition_attempt', {
+      count: recentCount,
+      window: recentWindow,
+      recent_transfers: global.recentTransfers[fromId].slice(-5) // Last 5 transfers
+    });
+  }
+  
+  // VULNERABLE BY DESIGN: Race condition - We first check balance, then later update it
+  // This creates a window where multiple transfers can be initiated before the balance is updated
+  db.get('SELECT balance FROM users WHERE id = ?', [fromId], (err, row) => {
+    if (err) {
+      console.error('Database error in quick-transfer:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (!row) {
+      return res.status(404).json({ error: 'Sender account not found' });
+    }
+    
+    const balance = row.balance;
+    const transferAmount = parseFloat(amount);
+    
+    if (balance < transferAmount) {
+      // Check if there's been a successful race condition exploit
+      const overdraftCheck = global.recentTransfers[fromId]
+        .filter(t => now - t.timestamp < 5000) // Look at last 5 seconds
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      if (overdraftCheck > balance) {
+        console.log(`⚠️ Race condition exploitation detected: User ${req.user.username} attempting to transfer $${overdraftCheck} with balance of $${balance}`);
+        updateLeaderboard(systemId, req.user.username, 'race_condition_success', {
+          attempted_transfers: overdraftCheck,
+          actual_balance: balance,
+          excess_amount: overdraftCheck - balance
+        });
+      }
+      
+      // Allow the transfer to proceed even with insufficient funds (vulnerable by design)
+      console.log(`⚠️ ALLOWING insufficient funds transfer from ${fromId} for $${transferAmount} (balance: $${balance})`);
+      
+      // But make it look like we're enforcing the check
+      if (Math.random() > 0.7) { // Only sometimes enforce the check to make the vulnerability exploitable but not too easy
+        return res.status(400).json({ error: 'Insufficient funds' });
+      }
+    }
+    
+    // VULNERABLE BY DESIGN: Add artificial delay to make race condition easier to exploit
+    setTimeout(() => {
+      // Process the transfer
+      const newBalance = balance - transferAmount;
+      
+      // Insert transaction record
+      db.run(
+        'INSERT INTO transactions (sender_id, receiver_id, amount, date, note) VALUES (?, ?, ?, datetime("now"), ?)',
+        [fromId, to, transferAmount, 'Quick transfer'],
+        function(err) {
+          if (err) {
+            console.error('Error inserting transaction:', err);
+            return res.status(500).json({ error: 'Transaction failed' });
+          }
+          
+          // Update sender's balance
+          db.run(
+            'UPDATE users SET balance = ? WHERE id = ?',
+            [newBalance, fromId],
+            function(err) {
+              if (err) {
+                console.error('Error updating sender balance:', err);
+                return res.status(500).json({ error: 'Balance update failed' });
+              }
+              
+              // Update receiver's balance
+              db.run(
+                'UPDATE users SET balance = balance + ? WHERE id = ?',
+                [transferAmount, to],
+                function(err) {
+                  if (err) {
+                    console.error('Error updating receiver balance:', err);
+                    // Don't return an error here to simulate partial update success (another vulnerability)
+                  }
+                  
+                  // Success response
+                  return res.json({
+                    success: true,
+                    message: 'Transfer completed successfully',
+                    transaction_id: this.lastID,
+                    new_balance: newBalance
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    }, 500); // 500ms delay to make race conditions easier to exploit
+  });
+});
+
+// Add proxy endpoint with SSRF vulnerability
+app.get('/api/proxy', verifyToken, (req, res) => {
+  const url = req.query.url;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL parameter is required' });
+  }
+  
+  // DANGEROUS: Check for potential SSRF attempts
+  const ssrfRiskPatterns = [
+    'localhost',
+    '127.0.0.1',
+    '0.0.0.0',
+    'internal',
+    'admin',
+    'file://',
+    '10.',
+    '172.16',
+    '192.168',
+    '.sock'
+  ];
+  
+  // Check for SSRF indicators
+  let ssrfAttemptDetected = false;
+  let detectedPattern = '';
+  
+  ssrfRiskPatterns.forEach(pattern => {
+    if (url.toLowerCase().includes(pattern)) {
+      ssrfAttemptDetected = true;
+      detectedPattern = pattern;
+    }
+  });
+  
+  // Categorize the SSRF attempt
+  let ssrfType = 'ssrf_attempt';
+  if (url.startsWith('file://')) {
+    ssrfType = 'ssrf_file_access';
+  } else if (url.includes('localhost') || url.includes('127.0.0.1')) {
+    if (url.includes(':3001') || url.includes('admin')) {
+      ssrfType = 'ssrf_internal_admin';
+    } else {
+      ssrfType = 'ssrf_internal_access';
+    }
+  } else if (url.match(/^https?:\/\/10\.|^https?:\/\/172\.|^https?:\/\/192\./)) {
+    ssrfType = 'ssrf_private_network';
+  }
+  
+  if (ssrfAttemptDetected) {
+    console.log(`SSRF attempt detected: ${url}`);
+    updateLeaderboard(systemId, req.user.username, ssrfType, {
+      url: url,
+      pattern: detectedPattern
+    });
+  }
+  
+  // VULNERABLE BY DESIGN: No URL validation, allowing SSRF
+  axios.get(url, { 
+    validateStatus: () => true, // Accept any status code
+    timeout: 5000 // 5 second timeout
+  })
+  .then(response => {
+    // Track successful SSRF request
+    if (ssrfAttemptDetected && response.status === 200) {
+      console.log(`Successful SSRF to ${url}`);
+      updateLeaderboard(systemId, req.user.username, 'ssrf_success', {
+        url: url,
+        status: response.status,
+        data_length: JSON.stringify(response.data).length
+      });
+      
+      // If sensitive data appears to have been accessed, track it specifically
+      const responseStr = JSON.stringify(response.data).toLowerCase();
+      if (responseStr.includes('jwt') || responseStr.includes('secret') || 
+          responseStr.includes('password') || responseStr.includes('api')) {
+        console.log('⚠️ SSRF exposed sensitive information!');
+        updateLeaderboard(systemId, req.user.username, 'ssrf_sensitive_data', {
+          url: url,
+          data_preview: JSON.stringify(response.data).substring(0, 100) + '...'
+        });
+      }
+    }
+    
+    // Return the proxied response
+    return res.status(response.status).json({
+      status: response.status,
+      headers: response.headers,
+      data: response.data
+    });
+  })
+  .catch(error => {
+    console.error(`Proxy error for ${url}:`, error.message);
+    return res.status(500).json({
+      error: 'Proxy request failed',
+      message: error.message
+    });
+  });
+});
+
+// Add comprehensive vulnerability chains leaderboard endpoint
+app.get('/api/vulnerability-chains', (req, res) => {
+  const chain = req.query.chain;
+  const systemId = req.headers['x-system-id'] || generateSystemId(req);
+  
+  // If no system ID, return empty progress
+  if (!systemId) {
+    return res.json({
+      success: true,
+      stages: []
+    });
+  }
+  
+  // Define the stages for each chain in order of progression
+  const chainStages = {
+    'jwt-chain': [
+      'jwt_info_access',
+      'jwt_decode_success',
+      'jwt_algorithm_confusion',
+      'jwt_weak_key_success',
+      'jwt_admin_forge'
+    ],
+    'sqli-chain': [
+      'sqli_detection',
+      'sqli_profile_update',
+      'admin_profile_view',
+      'sqli_admin_execution',
+      'sqli_privilege_escalation'
+    ],
+    'cookie-sqli': [
+      'cookie_sqli_attempt',
+      'cookie_sqli_success',
+      'cookie_sqli_data_leak'
+    ],
+    'xss-chain': [
+      'xss_detection',
+      'xss_attempt',
+      'xss_execution',
+      'xss_cookie_theft'
+    ],
+    'race-condition': [
+      'race_condition_attempt',
+      'race_condition_success'
+    ],
+    'prototype-pollution': [
+      'prototype_pollution_attempt',
+      'prototype_pollution_success'
+    ],
+    'ssrf-chain': [
+      'ssrf_attempt',
+      'ssrf_internal_access',
+      'ssrf_internal_admin',
+      'ssrf_file_access',
+      'ssrf_success',
+      'ssrf_sensitive_data'
+    ],
+    'csrf-chain': [
+      'csrf_detection',
+      'csrf_email_change',
+      'csrf_account_takeover'
+    ],
+    'modern-web-app': [
+      'discovered_vulnerable_dependency',
+      'client_side_pollution_success',
+      'graphql_access',
+      'graphql_direct_user_query',
+      'graphql_pollution_access_success',
+      'graphql_mass_data_query',
+      'graphql_batch_attack',
+      'graphql_transaction_exfiltration',
+      'token_extraction_success',
+      'mass_compromise_success'
+    ]
+  };
+  
+  // Chain descriptions to help users understand each chain
+  const chainDescriptions = {
+    'jwt-chain': 'JWT token manipulation to gain admin access through altered authentication tokens',
+    'sqli-chain': 'Second-order SQL Injection to achieve privilege escalation when an admin views your profile',
+    'cookie-sqli': 'Cookie-based SQL Injection to extract sensitive data from the database',
+    'xss-chain': 'DOM-based XSS to steal cookies and achieve session hijacking',
+    'race-condition': 'Race condition exploitation in money transfers to bypass balance checks',
+    'prototype-pollution': 'Prototype pollution to manipulate JavaScript objects and bypass security checks',
+    'ssrf-chain': 'Server-side request forgery to access internal services and sensitive data',
+    'csrf-chain': 'Cross-site request forgery to perform actions as another user without their knowledge',
+    'modern-web-app': 'Modern web app vulnerabilities: GraphQL, prototype pollution, and horizontal privilege escalation'
+  };
+  
+  // If chain doesn't exist, return all available chains
+  if (!chain || !chainStages[chain]) {
+    return res.json({
+      success: true,
+      message: 'Available vulnerability chains',
+      chains: Object.keys(chainStages).map(chainKey => ({
+        id: chainKey,
+        name: chainKey.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        description: chainDescriptions[chainKey] || '',
+        stages: chainStages[chainKey].length
+      }))
+    });
+  }
+  
+  // Query the database for completed stages and their timestamps
+  db.all(
+    'SELECT DISTINCT exploit_type, MIN(timestamp) as first_detection FROM exploitation_tracking WHERE system_id = ? GROUP BY exploit_type ORDER BY first_detection',
+    [systemId],
+    (err, rows) => {
+      if (err) {
+        return res.status(500).json({
+          success: false,
+          message: 'Error checking progress',
+          stages: []
+        });
+      }
+      
+      // Extract exploit types
+      const completedExploits = rows.map(row => row.exploit_type);
+      
+      // Filter for the requested chain
+      const completedStages = completedExploits.filter(exploit => 
+        chainStages[chain].includes(exploit)
+      );
+      
+      // Calculate completion percentage
+      const totalStages = chainStages[chain].length;
+      const completedCount = completedStages.length;
+      const percentage = Math.round((completedCount / totalStages) * 100);
+      
+      // Get most recent stage details (with timestamp)
+      let lastStage = null;
+      let lastStageTime = null;
+      
+      if (completedStages.length > 0) {
+        const lastStageType = completedStages[completedStages.length - 1];
+        const matchingRow = rows.find(row => row.exploit_type === lastStageType);
+        if (matchingRow) {
+          lastStage = lastStageType;
+          lastStageTime = matchingRow.first_detection;
+        }
+      }
+      
+      // Find the next stage to complete
+      const nextStage = chainStages[chain].find(stage => !completedStages.includes(stage));
+      
+      // Generate hint based on chain and progress
+      let hint = '';
+      
+      if (nextStage) {
+        // Chain-specific hints
+        if (chain === 'jwt-chain') {
+          if (nextStage === 'jwt_info_access') hint = 'Try accessing the /api/get-jwt-info endpoint to begin.';
+          else if (nextStage === 'jwt_decode_success') hint = 'Decode your JWT token to understand its structure.';
+          else if (nextStage === 'jwt_algorithm_confusion') hint = 'Try manipulating the "alg" field in the JWT header.';
+          else hint = 'Look for weak JWT secrets or try the "none" algorithm.';
+        } else if (chain === 'sqli-chain') {
+          if (nextStage === 'sqli_detection') hint = 'Try injecting SQL in your profile information.';
+          else if (nextStage === 'sqli_admin_execution') hint = 'Wait for an admin to view profile updates.';
+          else hint = 'Use SQL to modify your role to admin.';
+        } else if (chain === 'cookie-sqli') {
+          hint = 'Try setting a malicious theme cookie with SQL injection.';
+        } else if (chain === 'xss-chain') {
+          hint = 'Check the /api/documentation page for DOM-based XSS opportunities.';
+        } else if (chain === 'race-condition') {
+          hint = 'Send multiple transfer requests simultaneously to bypass balance checks.';
+        } else if (chain === 'ssrf-chain') {
+          if (nextStage === 'ssrf_attempt') hint = 'Use the /api/proxy endpoint to make internal requests.';
+          else if (nextStage === 'ssrf_internal_admin') hint = 'Try accessing the internal admin service on port 3001.';
+          else hint = 'Look for ways to access local files or other internal resources.';
+        } else if (chain === 'csrf-chain') {
+          hint = 'Create a form on another site that submits to /api/update-email without CSRF protection.';
+        }
+      } else {
+        hint = 'Congratulations! You have completed all stages of this vulnerability chain.';
+      }
+      
+      res.json({
+        success: true,
+        chain: {
+          id: chain,
+          name: chain.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          description: chainDescriptions[chain] || ''
+        },
+        stages: completedStages,
+        all_stages: chainStages[chain],
+        progress: {
+          completed: completedCount,
+          total: totalStages,
+          percentage: percentage
+        },
+        last_stage: lastStage,
+        last_stage_time: lastStageTime,
+        next_stage: nextStage,
+        hint: hint
+      });
+    }
+  );
+});
