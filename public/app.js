@@ -3,6 +3,63 @@ let currentUser = null;
 // Use current domain for API instead of hardcoded localhost
 const API_URL = `${window.location.protocol}//${window.location.host}/api`;
 
+// API Helper functions to standardize authenticated requests
+async function apiFetch(endpoint, options = {}) {
+  const token = localStorage.getItem('token');
+  if (!token && options.requiresAuth !== false) {
+    console.error('Authentication token is required but not available');
+    return { ok: false, error: 'Authentication required' };
+  }
+  
+  // Set default headers with authentication
+  const headers = {
+    ...(options.headers || {}),
+    'Authorization': token
+  };
+  
+  // Don't include Authorization header for non-authenticated endpoints
+  if (options.requiresAuth === false) {
+    delete headers.Authorization;
+  }
+  
+  try {
+    const response = await fetch(`${API_URL}/${endpoint}`, {
+      ...options,
+      headers
+    });
+    
+    if (response.status === 401) {
+      // Token might be expired or invalid
+      console.error('Authentication failed. Token may be expired.');
+      return { ok: false, error: 'Authentication failed' };
+    }
+    
+    // For JSON responses
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      const data = await response.json();
+      return { ok: response.ok, status: response.status, data };
+    }
+    
+    // For other response types
+    const text = await response.text();
+    return { ok: response.ok, status: response.status, text };
+  } catch (error) {
+    console.error(`API error for ${endpoint}:`, error);
+    return { ok: false, error: error.message };
+  }
+}
+
+// Specific function for JWT info endpoint
+async function getJwtInfo() {
+  const result = await apiFetch('get-jwt-info');
+  if (result.ok) {
+    return result.data;
+  } else {
+    console.error('Failed to get JWT info:', result.error);
+    return null;
+  }
+}
+
 // DOM Elements
 const loginForm = document.getElementById('login-form');
 const registerForm = document.getElementById('register-form');
@@ -400,7 +457,7 @@ async function loadTransactions() {
     
     if (txResponse.ok) {
       const txData = await txResponse.json();
-      displayTransactions(txData.transactions);
+      displayTransactions(txData);
     } else {
       console.error('Failed to fetch transactions:', await txResponse.text());
     }

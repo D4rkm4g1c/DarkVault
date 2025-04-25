@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const { graphqlHTTP } = require('express-graphql');
 const { buildSchema } = require('graphql');
 const lodash = require('lodash');
+const { errorHandler, validateRequestBody, handleLargePayloads } = require('./error-handler');
 
 // Create logs directory if it doesn't exist
 if (!fs.existsSync('logs')) {
@@ -150,6 +151,10 @@ app.use(cors({
 app.use(bodyParser.json({ limit: '2mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '2mb' }));
 app.use(cookieParser());
+
+// Add request validation middleware
+app.use(validateRequestBody);
+app.use(handleLargePayloads);
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
@@ -838,7 +843,8 @@ app.post('/api/login', (req, res) => {
   // Use parameterized query instead of string concatenation
   const query = `SELECT * FROM users WHERE username = ? AND password = ?`;
   
-  db.get(query, [username, password], async (err, user) => {
+  // Use the safe query helper to prevent crashes during scanning
+  safeSqliteQuery(db, 'get', query, [username, password], (err, user) => {
     if (err) {
       console.error('Login error:', err.message);
       return res.status(500).json({ error: 'Database error' });
@@ -873,12 +879,15 @@ app.post('/api/login', (req, res) => {
 
     // Update user's last login
     try {
-      db.run('UPDATE users SET last_login = ? WHERE id = ?', [new Date().toISOString(), user.id], function(err) {
-        if (err) {
-          // If there's an error updating last_login, just log it but don't fail the login
-          console.warn('Warning: Could not update last_login:', err.message);
+      safeSqliteQuery(db, 'run', 'UPDATE users SET last_login = ? WHERE id = ?', 
+        [new Date().toISOString(), user.id], 
+        function(err) {
+          if (err) {
+            // If there's an error updating last_login, just log it but don't fail the login
+            console.warn('Warning: Could not update last_login:', err.message);
+          }
         }
-      });
+      );
     } catch (error) {
       console.warn('Warning: Exception when updating last_login:', error.message);
     }
@@ -917,18 +926,19 @@ app.post('/api/register', (req, res) => {
   // Use parameterized query instead of string concatenation
   const query = `INSERT INTO users (username, password, email) VALUES (?, ?, ?)`;
   
-  db.run(query, [username, password, email], function(err) {
+  // Use safe SQLite query to prevent crashes during scanning
+  safeSqliteQuery(db, 'run', query, [username, password, email], function(err, result) {
     if (err) {
       console.error('Registration error:', err.message);
       logError('Registration', err, { username, email });
       return res.status(500).json({ error: 'Registration failed' });
     }
     
-    console.log(`User registered successfully: username=${username}, userId=${this.lastID}`);
+    // In our wrapper, this.lastID isn't available, so use a generic user ID for response
+    console.log(`User registered successfully: username=${username}`);
     return res.status(201).json({
       success: true,
-      message: 'User registered successfully',
-      userId: this.lastID
+      message: 'User registered successfully'
     });
   });
 });
@@ -941,7 +951,14 @@ const verifyToken = (req, res, next) => {
     return res.status(401).json({ message: 'Access denied. No token provided.' });
   }
   
-  const token = bearerHeader;
+  // Handle various authorization header formats
+  let token;
+  if (bearerHeader.startsWith('Bearer ')) {
+    token = bearerHeader.split(' ')[1];
+  } else {
+    token = bearerHeader;
+  }
+  
   const systemId = req.headers['x-system-id'] || generateSystemId(req);
   
   if (!token) {
@@ -960,6 +977,12 @@ const verifyToken = (req, res, next) => {
     // First attempt to decode without verification (to check for tampering)
     let decodedWithoutVerification;
     try {
+      // Check if token contains three parts (header.payload.signature)
+      if (!token.includes('.')) {
+        // Malformed token - handle gracefully
+        return res.status(401).json({ message: 'Invalid token format.' });
+      }
+      
       decodedWithoutVerification = jwt.decode(token);
       
       // Track successful decoding
@@ -970,13 +993,18 @@ const verifyToken = (req, res, next) => {
       // Check for algorithm tampering
       const tokenParts = token.split('.');
       if (tokenParts.length === 3) {
-        const header = JSON.parse(atob(tokenParts[0]));
-        if (header.alg === 'none' || header.alg === 'HS256' && decodedWithoutVerification.role === 'admin') {
-          // Track algorithm confusion attempt
-          updateLeaderboard(systemId, decodedWithoutVerification.username || 'anonymous', 'jwt_algorithm_confusion', {
-            algorithm: header.alg,
-            claimedRole: decodedWithoutVerification.role
-          });
+        try {
+          const headerStr = Buffer.from(tokenParts[0], 'base64').toString();
+          const header = JSON.parse(headerStr);
+          if (header.alg === 'none' || (header.alg === 'HS256' && decodedWithoutVerification.role === 'admin')) {
+            // Track algorithm confusion attempt
+            updateLeaderboard(systemId, decodedWithoutVerification.username || 'anonymous', 'jwt_algorithm_confusion', {
+              algorithm: header.alg,
+              claimedRole: decodedWithoutVerification.role
+            });
+          }
+        } catch (headerParseError) {
+          console.error('Error parsing JWT header:', headerParseError);
         }
       }
     } catch (decodeErr) {
@@ -1349,7 +1377,7 @@ app.post('/api/admin/report', verifyToken, (req, res) => {
   }
 
   // Get report parameters from request body
-  const { report_name, report_type } = req.body;
+  const { report_name } = req.body;
   
   if (!report_name) {
     return res.status(400).json({
@@ -1358,61 +1386,194 @@ app.post('/api/admin/report', verifyToken, (req, res) => {
     });
   }
 
-  // Validate report name to prevent command injection
-  if (!/^[a-zA-Z0-9_-]+$/.test(report_name)) {
-    return res.status(400).json({
-      error: 'Invalid report name',
-      message: 'Report name can only contain alphanumeric characters, underscores, and hyphens'
-    });
-  }
-
-  // Generate a report safely without command injection
-  const reportContent = `Report: ${report_name}\nType: ${report_type || 'standard'}\nGenerated: ${new Date().toISOString()}`;
-  const reportFile = path.join(os.tmpdir(), `report_${Date.now()}.txt`);
+  // VULNERABLE BY DESIGN: Unsanitized input goes directly to command
+  const cmd = `generate_report ${report_name} > /tmp/report.txt`;
   
-  try {
-    fs.writeFileSync(reportFile, reportContent);
+  console.log(`Executing report command: ${cmd}`);
+  
+  exec(cmd, (error, stdout, stderr) => {
+    if (error) {
+      return res.status(500).json({
+        error: 'Report generation failed',
+        message: stderr
+      });
+    }
     
-    // Read the generated report
-    const data = fs.readFileSync(reportFile, 'utf8');
-    
-    return res.json({
-      success: true,
-      report: {
-        name: report_name,
-        type: report_type || 'standard',
-        content: data,
-        created: new Date().toISOString()
-      },
-      message: 'Report generated successfully'
+    // Read and return the report
+    fs.readFile('/tmp/report.txt', 'utf8', (err, data) => {
+      if (err) {
+        // If the file doesn't exist, just return whatever output we got
+        return res.json({
+          success: true,
+          report: {
+            name: report_name,
+            content: stdout || "No output generated"
+          }
+        });
+      }
+      
+      return res.json({
+        success: true,
+        report: {
+          name: report_name,
+          content: data
+        }
+      });
     });
-  } catch (err) {
-    return res.status(500).json({
-      error: 'Server error',
-      message: 'Failed to generate report'
-    });
-  }
+  });
 });
 
 // Secure file upload endpoint
-app.post('/api/upload', verifyToken, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ 
-      error: 'No file uploaded or invalid file type',
-      message: 'Please upload a valid file (JPEG, PNG, PDF, or TXT)'
-    });
-  }
-
-  const uploadedFile = req.file;
+app.post('/api/upload', verifyToken, (req, res, next) => {
+  // VULNERABLE BY DESIGN: Use user-supplied path from headers if provided
+  const uploadPath = req.headers['x-upload-path'] || 'uploads';
+  const useOriginalFilename = req.headers['x-use-original-filename'] === 'true';
+  const skipValidation = req.headers['x-skip-validation'] === 'true';
   
-  return res.json({
-    success: true,
-    file: {
-      name: uploadedFile.originalname,
-      path: uploadedFile.path,
-      size: uploadedFile.size
+  console.log(`Upload request to path: ${uploadPath}, useOriginalFilename: ${useOriginalFilename}, skipValidation: ${skipValidation}`);
+  
+  // Create custom storage for this request
+  const customStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      try {
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      } catch (error) {
+        console.error('Error creating upload directory:', error);
+        cb(new Error('Invalid upload path'));
+      }
     },
-    message: 'File uploaded successfully'
+    filename: function (req, file, cb) {
+      if (useOriginalFilename) {
+        // Use original filename without sanitization
+        cb(null, file.originalname);
+      } else {
+        // VULNERABLE BY DESIGN: Poor sanitization that can be bypassed
+        // This preserves null bytes and doesn't handle double extensions properly
+        let filename = file.originalname;
+        
+        // Try to sanitize but with exploitable flaws
+        if (filename.includes('../') || filename.includes('..\\')) {
+          filename = filename.replace(/\.\.\//g, '').replace(/\.\.\\/g, '');
+        }
+        
+        cb(null, Date.now() + '-' + filename);
+      }
+    }
+  });
+  
+  // VULNERABLE BY DESIGN: Vulnerable file filter that can be bypassed
+  const vulnerableFileFilter = function(req, file, cb) {
+    // Store original content type for logging
+    const originalContentType = file.mimetype;
+    
+    // Check if Content-Type is being spoofed
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    const dangerousExtensions = ['.php', '.phtml', '.php5', '.php4', '.php3', '.phar', '.js', '.asp', '.aspx', '.jsp', '.cgi', '.pl', '.sh', '.py', '.exe'];
+    
+    // VULNERABILITY #1: Accepting a file based on mimetype only, regardless of extension
+    if (skipValidation || file.mimetype.startsWith('image/')) {
+      console.log(`Accepting file based on mimetype: ${file.mimetype}, filename: ${file.originalname}`);
+      return cb(null, true);
+    }
+    
+    // VULNERABILITY #2: Null byte injection bypass
+    // This check can be bypassed with filenames like shell.php%00.png
+    if (file.originalname.includes('\0') || file.originalname.includes('%00')) {
+      console.log(`⚠️ Potential null byte injection detected in filename: ${file.originalname}`);
+      // Still accept the file (vulnerable by design)
+      return cb(null, true);
+    }
+    
+    // VULNERABILITY #3: Double extension check bypass
+    // Only checks the last extension and ignores file.php.png
+    if (['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.txt', '.doc', '.docx'].includes(fileExt)) {
+      console.log(`Accepting file with allowed extension: ${fileExt}`);
+      return cb(null, true);
+    }
+    
+    // VULNERABILITY #4: Client-provided MIME type is trusted over content
+    if (req.body.allowFile === 'true') {
+      console.log(`Accepting file with explicit allowFile parameter, bypassing checks`);
+      return cb(null, true);
+    }
+    
+    // Log potential attack attempt with dangerous file
+    if (dangerousExtensions.includes(fileExt)) {
+      console.log(`⚠️ Rejected dangerous file: ${file.originalname} (${file.mimetype})`);
+    }
+    
+    // Default deny (but can be bypassed through multiple methods above)
+    return cb(null, false);
+  };
+  
+  // Create upload middleware with the vulnerable filter
+  const uploadMiddleware = multer({ 
+    storage: customStorage,
+    fileFilter: vulnerableFileFilter,
+    limits: {
+      fileSize: 10 * 1024 * 1024 // 10MB
+    }
+  }).single('file');
+  
+  uploadMiddleware(req, res, (err) => {
+    if (err) {
+      console.error('File upload error:', err.message);
+      return res.status(400).json({ 
+        error: 'File upload error',
+        message: err.message
+      });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ 
+        error: 'No file uploaded or invalid file type',
+        message: 'Please upload a valid file'
+      });
+    }
+
+    const uploadedFile = req.file;
+    
+    // Check for potential exploitation attempts
+    const fileExt = path.extname(uploadedFile.originalname).toLowerCase();
+    const dangerousExtensions = ['.php', '.phtml', '.php5', '.php3', '.phar', '.js', '.asp', '.aspx', '.jsp', '.cgi', '.pl', '.sh', '.py', '.exe'];
+    const hasNullByte = uploadedFile.originalname.includes('\0') || uploadedFile.originalname.includes('%00');
+    const hasDoubleExtension = uploadedFile.originalname.split('.').length > 2;
+    
+    if (dangerousExtensions.includes(fileExt) || hasNullByte || hasDoubleExtension || 
+        uploadPath !== 'uploads' || useOriginalFilename || skipValidation) {
+      console.log(`⚠️ Potential file upload vulnerability exploitation detected!`);
+      console.log(`  File: ${uploadedFile.originalname}`);
+      console.log(`  MIME type: ${uploadedFile.mimetype}`);
+      console.log(`  Path: ${uploadedFile.path}`);
+      console.log(`  Size: ${uploadedFile.size} bytes`);
+      
+      if (dangerousExtensions.includes(fileExt)) {
+        console.log(`  ⚠️ Dangerous extension: ${fileExt}`);
+      }
+      if (hasNullByte) {
+        console.log(`  ⚠️ Null byte detected in filename`);
+      }
+      if (hasDoubleExtension) {
+        console.log(`  ⚠️ Multiple extensions detected`);
+      }
+      if (uploadPath !== 'uploads') {
+        console.log(`  ⚠️ Custom upload path: ${uploadPath}`);
+      }
+    }
+    
+    return res.json({
+      success: true,
+      file: {
+        name: uploadedFile.originalname,
+        path: uploadedFile.path,
+        size: uploadedFile.size,
+        mimetype: uploadedFile.mimetype
+      },
+      message: 'File uploaded successfully'
+    });
   });
 });
 
@@ -1431,15 +1592,19 @@ app.get('/api/search', (req, res) => {
   const query = `SELECT * FROM items WHERE name LIKE ? OR description LIKE ?`;
   const param = `%${searchTerm}%`;
   
-  db.all(query, [param, param], (err, items) => {
+  // Use safe SQL query helper to prevent crashes during scanning
+  safeSqliteQuery(db, 'all', query, [param, param], (err, items) => {
     if (err) {
       console.error('Search error:', err.message);
       return res.status(500).json({ error: 'Search failed' });
     }
     
+    // If no items found (which is common for SQL injection attempts), return empty array
+    const results = items || [];
+    
     return res.json({ 
-      results: items,
-      count: items.length
+      results: results,
+      count: results.length
     });
   });
 });
@@ -1822,16 +1987,15 @@ app.get('/api/exploit-status', verifyToken, (req, res) => {
 });
 
 // Helper function to extract JWT token from login endpoint
-app.get('/api/get-jwt-info', (req, res) => {
+app.get('/api/get-jwt-info', verifyToken, (req, res) => {
   // Information disclosure vulnerability - reveals JWT details
   // This helps users understand the JWT structure for the challenge
-  const token = req.headers['authorization'];
-  if (!token) {
-    return res.status(400).json({ message: 'No token provided' });
-  }
-  
+  // The token is already verified and available as req.user
   try {
-    // Don't verify, just decode to show structure
+    // Get the original token from the authorization header
+    const token = req.headers['authorization'];
+    
+    // Just decode without verification to show structure
     const decoded = jwt.decode(token, { complete: true });
     
     // Intentionally leak information about the JWT
@@ -2651,6 +2815,9 @@ app.post('/api/leaderboard/username', verifyToken, (req, res) => {
     }
   );
 });
+
+// Add global error handler to prevent crashing during security scanning
+app.use(errorHandler);
 
 // Start the server
 app.listen(PORT, () => {
@@ -3927,4 +4094,27 @@ app.get('/api/vulnerability-chains', (req, res) => {
       });
     }
   );
+});
+
+// Global error handler to prevent app crashes during security scanning
+app.use((err, req, res, next) => {
+  console.error('Global error handler caught: ', err.message);
+  logError('global_error_handler', err, { 
+    path: req.path,
+    method: req.method,
+    query: req.query,
+    headers: req.headers
+  });
+  
+  // Don't expose error details in production
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(500).json({ error: 'Internal server error' });
+  } else {
+    // In dev/test mode, return error details to assist testing
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      message: err.message,
+      stack: err.stack
+    });
+  }
 });
