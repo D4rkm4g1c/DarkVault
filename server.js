@@ -984,14 +984,14 @@ const verifyToken = (req, res, next) => {
     }
     
     // Try to verify with the main secret
-    try {
-      decoded = jwt.verify(token, JWT_SECRET);
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
       // Continue with the request if verification is successful
     } catch (err) {
       // If verification fails with the main secret, try with the weak key
-      try {
-        decoded = jwt.verify(token, WEAK_KEY);
-        console.log('WARNING: JWT verified with weak dev key!');
+        try {
+          decoded = jwt.verify(token, WEAK_KEY);
+          console.log('WARNING: JWT verified with weak dev key!');
         
         // Track successful use of weak key (potential vulnerability exploitation)
         updateLeaderboard(systemId, decoded.username || 'anonymous', 'jwt_weak_key_success', {
@@ -1025,7 +1025,7 @@ const verifyToken = (req, res, next) => {
     // Attach user info to request
     req.user = decoded;
     next();
-  } catch (error) {
+    } catch (error) {
     res.status(401).json({ message: 'Invalid token.' });
   }
 };
@@ -1881,7 +1881,7 @@ app.get('/api/user-preferences', verifyToken, (req, res) => {
     });
     
     if (sqlInjectionDetected) {
-      console.log('Potential SQL injection detected in theme cookie');
+        console.log('Potential SQL injection detected in theme cookie');
       updateLeaderboard(systemId, req.user ? req.user.username : 'anonymous', 'cookie_sqli_attempt', {
         cookie_value: theme,
         pattern: detectedPattern
@@ -1902,10 +1902,10 @@ app.get('/api/user-preferences', verifyToken, (req, res) => {
         updateLeaderboard(systemId, req.user ? req.user.username : 'anonymous', 'cookie_sqli_success', {
           cookie_value: theme,
           rows_returned: rows.length
-        });
-      }
-      
-      // Check for potential SQL injection based on suspicious result patterns
+      });
+    }
+    
+    // Check for potential SQL injection based on suspicious result patterns
       const sensitiveDataPatterns = [
         'username', 'password', 'email', 'credit', 'admin', 'secret', 'key'
       ];
@@ -1940,8 +1940,8 @@ app.get('/api/user-preferences', verifyToken, (req, res) => {
           language: 'en',
           timezone: 'UTC'
         }
-      });
     });
+  });
   } catch (error) {
     console.error('Theme preferences error:', error);
     res.status(500).json({ error: 'An error occurred while fetching preferences' });
@@ -2642,11 +2642,11 @@ app.post('/api/leaderboard/username', verifyToken, (req, res) => {
           }
         );
       } else {
-        return res.status(200).json({
-          success: true,
-          message: 'Username updated successfully',
-          username: sanitizedUsername
-        });
+      return res.status(200).json({
+        success: true,
+        message: 'Username updated successfully',
+        username: sanitizedUsername
+      });
       }
     }
   );
@@ -2955,7 +2955,7 @@ app.get('/leaderboard', (req, res) => {
   
   res.setHeader('Content-Type', 'text/html');
   return res.status(200).send(html);
-});
+}); 
 
 // Add check-exploit-progress endpoint 
 app.get('/api/check-exploit-progress', (req, res) => {

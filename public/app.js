@@ -490,7 +490,8 @@ transferForm.addEventListener('submit', async (e) => {
       body: JSON.stringify({
         to: toId,
         amount: amount,
-        note: note
+        note: note,
+        csrf_token: currentUser.id.toString()
       })
     });
     
