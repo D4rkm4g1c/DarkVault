@@ -34,6 +34,23 @@ function logError(location, error, data = {}) {
   console.error(`${timestamp} - ${location} - ${error.message}`);
 }
 
+// Helper function for safely executing SQLite queries with error handling
+function safeSqliteQuery(db, method, query, params, callback) {
+  try {
+    return db[method](query, params, function(err, result) {
+      if (err) {
+        console.error(`SQLite ${method} error:`, err);
+        logError('sqlite_query', err, { query, params });
+      }
+      callback(err, result);
+    });
+  } catch (error) {
+    console.error(`Exception in safeSqliteQuery:`, error);
+    logError('sqlite_query_exception', error, { query, params });
+    callback(error, null);
+  }
+}
+
 // Insecure JWT secret
 const JWT_SECRET = 'darkvault-super-secret-key';
 const WEAK_KEY = 'dev-key'; // Secondary weak key for testing
