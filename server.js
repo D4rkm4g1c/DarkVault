@@ -2443,13 +2443,6 @@ function updateLeaderboard(systemId, username, vulnType, vulnDetails = {}) {
       }
     }
   );
-}
-
-// Add a helper function to update leaderboard scores
-function updateLeaderboard(systemId, username, vulnType, vulnDetails = {}) {
-  if (!systemId) return false;
-  
-  const now = new Date().toISOString();
   
   // Get current leaderboard entry
   db.get('SELECT * FROM leaderboard WHERE system_id = ?', [systemId], (err, row) => {
@@ -2460,6 +2453,7 @@ function updateLeaderboard(systemId, username, vulnType, vulnDetails = {}) {
     
     if (!row) {
       // Create new entry if it doesn't exist
+      const now = new Date().toISOString();
       const initialCompleted = {};
       initialCompleted[vulnType] = {
         discovered: now,
@@ -2477,6 +2471,7 @@ function updateLeaderboard(systemId, username, vulnType, vulnDetails = {}) {
       );
     } else {
       // Update existing entry
+      const now = new Date().toISOString();
       let completedVulns = {};
       try {
         completedVulns = JSON.parse(row.completed_vulns);
@@ -2509,12 +2504,14 @@ function updateLeaderboard(systemId, username, vulnType, vulnDetails = {}) {
         if (vulnType.includes('success')) pointValue *= 2;
         
         const newScore = row.score + pointValue;
-        const username = row.username || 'Anonymous';
+        
+        // Use provided username or keep existing one
+        const updatedUsername = username || row.username || 'Anonymous';
         
         // Update the entry
         db.run(
           'UPDATE leaderboard SET score = ?, username = ?, completed_vulns = ?, last_updated = ? WHERE system_id = ?',
-          [newScore, username, JSON.stringify(completedVulns), now, systemId],
+          [newScore, updatedUsername, JSON.stringify(completedVulns), now, systemId],
           (err) => {
             if (err) {
               console.error('Error updating leaderboard:', err.message);
@@ -2601,9 +2598,14 @@ app.get('/api/leaderboard', (req, res) => {
 // Add an endpoint to update username on the leaderboard
 app.post('/api/leaderboard/username', verifyToken, (req, res) => {
   const { username } = req.body;
+  const systemId = req.headers['x-system-id'] || req.systemId || generateSystemId(req);
   
-  if (!username || !req.systemId) {
+  if (!username) {
     return res.status(400).json({ error: 'Username required' });
+  }
+  
+  if (!systemId) {
+    return res.status(400).json({ error: 'System ID not found' });
   }
   
   // Sanitize username
@@ -2612,18 +2614,40 @@ app.post('/api/leaderboard/username', verifyToken, (req, res) => {
   // Update username in leaderboard
   db.run(
     'UPDATE leaderboard SET username = ? WHERE system_id = ?',
-    [sanitizedUsername, req.systemId],
+    [sanitizedUsername, systemId],
     function(err) {
       if (err) {
         console.error('Error updating leaderboard username:', err.message);
         return res.status(500).json({ error: 'Failed to update username' });
       }
       
-      return res.status(200).json({
-        success: true,
-        message: 'Username updated successfully',
-        username: sanitizedUsername
-      });
+      // Check if any rows were affected
+      if (this.changes === 0) {
+        // Create a new entry if it doesn't exist
+        const now = new Date().toISOString();
+        db.run(
+          'INSERT INTO leaderboard (system_id, username, score, completed_vulns, last_updated, first_seen) VALUES (?, ?, 0, ?, ?, ?)',
+          [systemId, sanitizedUsername, '{}', now, now],
+          (insertErr) => {
+            if (insertErr) {
+              console.error('Error creating leaderboard entry:', insertErr.message);
+              return res.status(500).json({ error: 'Failed to create leaderboard entry' });
+            }
+            
+            return res.status(200).json({
+              success: true,
+              message: 'Username set successfully',
+              username: sanitizedUsername
+            });
+          }
+        );
+      } else {
+        return res.status(200).json({
+          success: true,
+          message: 'Username updated successfully',
+          username: sanitizedUsername
+        });
+      }
     }
   );
 });
@@ -2886,22 +2910,36 @@ app.get('/leaderboard', (req, res) => {
         if (!username) return;
         
         try {
+          // Get system ID from cookie
+          const getCookie = (name) => {
+            const value = "; " + document.cookie;
+            const parts = value.split("; " + name + "=");
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+          };
+          
+          const systemId = getCookie('system_id');
+          
           const response = await fetch('/api/leaderboard/username', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': localStorage.getItem('token') || ''
+              'Authorization': localStorage.getItem('token') || '',
+              'X-System-ID': systemId || ''
             },
             body: JSON.stringify({ username })
           });
           
           if (response.ok) {
             loadLeaderboard();
+            alert('Username updated successfully!');
           } else {
-            alert('Failed to update username');
+            const errorData = await response.json();
+            alert('Failed to update username: ' + (errorData.error || 'Unknown error'));
           }
         } catch (error) {
           console.error('Error updating username:', error);
+          alert('Failed to update username. Please try again.');
         }
       });
       
